@@ -3,8 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <title>swati-lite</title>
+    <!-- Add a placeholder for nonce that will be replaced dynamically -->
+    <script id="nonce-script">
+      // Script to apply nonces to dynamic elements
+      document.addEventListener('DOMContentLoaded', function() {
+        if (window.cspNonces) {
+          const { scriptNonce, styleNonce } = window.cspNonces;
+          
+          // Apply nonces to all existing scripts and styles
+          document.querySelectorAll('script').forEach(script => {
+            if (!script.nonce && scriptNonce) {
+              script.setAttribute('nonce', scriptNonce);
+            }
+          });
+          
+          document.querySelectorAll('style').forEach(style => {
+            if (!style.nonce && styleNonce) {
+              style.setAttribute('nonce', styleNonce);
+            }
+          });
+        }
+      });
+    </script>
   </head>
   <body>
-    <div id="root">there</div>
+    <div id="root"></div>
   </body>
 </html>

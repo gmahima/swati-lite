@@ -1,11 +1,16 @@
-
 import React from 'react';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import HomePage from './components/HomePage';
+import MonacoEditor from './components/Editor';
 
 const App: React.FC = () => (
-  <div className="h-screen flex items-center justify-center bg-gray-100">
-    <h1 className="text-2xl font-bold text-blue-600">Hello from swati-lite!</h1>
-    <p className="mt-2 text-gray-700">Your Electron + React + TypeScript app is running.</p>
-  </div>
+  <Router>
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/editor" element={<MonacoEditor />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  </Router>
 );
 
 export default App;
