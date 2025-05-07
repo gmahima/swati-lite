@@ -1,5 +1,6 @@
 const rules = require('./webpack.rules');
 const plugins = require('./webpack.plugins');
+const path = require('path');
 
 // Add CSS rule
 rules.push({
@@ -19,6 +20,13 @@ module.exports = {
     fallback: {
       path: false,
       fs: false,
+    },
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+      '@ui': path.resolve(__dirname, 'src/renderer/components/ui'),
+      '@components': path.resolve(__dirname, 'src/renderer/components'),
+      '@lib': path.resolve(__dirname, 'src/lib'),
+      '@hooks': path.resolve(__dirname, 'src/hooks'),
     },
   },
   // The Monaco Editor requires special handling

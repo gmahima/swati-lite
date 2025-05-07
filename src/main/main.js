@@ -3,6 +3,8 @@ const path = require('node:path');
 const fs = require('fs');
 const Store = require('electron-store');
 const crypto = require('crypto');
+import { handleChat } from './chat-handler.ts';
+import { ChatOpenAI } from '@langchain/openai';
 
 // Initialize electron-store for persistent data
 const store = new Store();
@@ -269,6 +271,39 @@ app.whenReady().then(() => {
   // Get recent projects
   ipcMain.handle('app:getRecentProjects', () => {
     return store.get('recentProjects') || [];
+  });
+  
+  // Handle chat requests
+  ipcMain.handle('chat:send', async (event, messages) => {
+    try {
+      const result = await handleChat(messages);
+      return result;
+    } catch (error) {
+      console.error('Error handling chat request:', error);
+      throw error;
+    }
+  });
+  
+  // Handle streaming chat responses
+  ipcMain.on('chat:stream', (event, messages) => {
+    try {
+      const model = new ChatOpenAI({
+        streaming: true,
+        callbacks: [{
+          handleLLMNewToken(token) {
+            event.sender.send('chat:token', token);
+          },
+        }],
+      });
+      
+      handleChat(messages).catch(error => {
+        console.error('Error in streaming chat:', error);
+        event.sender.send('chat:error', error.message);
+      });
+    } catch (error) {
+      console.error('Error setting up chat stream:', error);
+      event.sender.send('chat:error', error.message);
+    }
   });
   
   createWindow();

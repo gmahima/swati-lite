@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '@ui/button';
 
 interface RecentProject {
   path: string;
@@ -81,20 +82,20 @@ const HomePage: React.FC = () => {
         
         <div className="bg-white p-6 rounded-lg shadow-md mb-8">
           <div className="flex flex-col gap-4">
-            <button
+            <Button
               onClick={handleOpenFolder}
-              className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition-colors"
+              variant="default"
               disabled={isLoading}
             >
               {isLoading ? 'Loading...' : 'Open Folder'}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleOpenFile}
-              className="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors"
+              variant="secondary"
               disabled={isLoading}
             >
               {isLoading ? 'Loading...' : 'Open File'}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -104,17 +105,20 @@ const HomePage: React.FC = () => {
             <ul className="divide-y divide-gray-200">
               {recentProjects.map((project) => (
                 <li key={project.path} className="py-3">
-                  <button
+                  <Button
                     onClick={() => handleOpenRecentProject(project.path)}
-                    className="w-full text-left hover:bg-gray-50 p-2 rounded transition-colors"
+                    variant="ghost"
+                    className="w-full text-left hover:bg-gray-50 p-2 rounded transition-colors justify-start"
                     disabled={isLoading}
                   >
-                    <p className="font-medium text-blue-600">{project.name}</p>
-                    <p className="text-sm text-gray-500 truncate">{project.path}</p>
-                    <p className="text-xs text-gray-400">
-                      Last opened: {new Date(project.lastOpened).toLocaleDateString()}
-                    </p>
-                  </button>
+                    <div>
+                      <p className="font-medium text-blue-600">{project.name}</p>
+                      <p className="text-sm text-gray-500 truncate">{project.path}</p>
+                      <p className="text-xs text-gray-400">
+                        Last opened: {new Date(project.lastOpened).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </Button>
                 </li>
               ))}
             </ul>

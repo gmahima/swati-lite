@@ -10,7 +10,15 @@
       "forceConsistentCasingInFileNames": true,
       "allowJs": true,
       "checkJs": false,
-      "noEmit": true
+      "noEmit": true,
+      "baseUrl": ".",
+      "paths": {
+        "@/*": ["src/*"],
+        "@components/*": ["src/renderer/components/*"],
+        "@lib/*": ["src/lib/*"],
+        "@hooks/*": ["src/hooks/*"],
+        "@ui/*": ["src/renderer/components/ui/*"]
+      }
     },
     "include": ["src/**/*.js", "src/**/*.jsx", "src/**/*.ts", "src/**/*.tsx"]
   }

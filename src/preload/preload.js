@@ -13,6 +13,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (path, content) => ipcRenderer.invoke('file:save', path, content),
   getRecentProjects: () => ipcRenderer.invoke('app:getRecentProjects'),
   getCspNonces: () => ipcRenderer.invoke('get-csp-nonces'),
+  chat: (messages) => ipcRenderer.invoke('chat:send', messages),
+  ipcRenderer: {
+    on: (channel, listener) => ipcRenderer.on(channel, listener),
+    once: (channel, listener) => ipcRenderer.once(channel, listener),
+    send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+    removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),
+  },
 });
 
 // When this preload script runs, get nonces from window object

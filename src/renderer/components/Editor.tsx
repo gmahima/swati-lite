@@ -1,12 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import Editor from '@monaco-editor/react';
+import Editor, { Monaco } from '@monaco-editor/react';
 import noncePlugin from '../MonacoNoncePlugin';
+import { Button } from './ui/button';
+import { ChatSidebar } from '@components/ChatSidebar';
+import { ThreadList } from './assistant-ui/thread-list';
+import { Thread } from './assistant-ui/thread';
+import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from './ui/resizable';
 
 const MonacoEditor: React.FC = () => {
   const [content, setContent] = useState<string>('');
-  const [language, setLanguage] = useState<string>('plaintext');
-  const [filePath, setFilePath] = useState<string>('');
+  const [language, setLanguage] = useState<string>('javascript');
+  const [filePath, setFilePath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const location = useLocation();
@@ -49,12 +54,11 @@ const MonacoEditor: React.FC = () => {
 
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
-      // Optionally auto-save changes
-      // window.electronAPI.saveFile(filePath, value);
+      setContent(value);
     }
   };
 
-  const handleEditorDidMount = (editor: any, monaco: any) => {
+  const handleEditorDidMount = (editor: any, monaco: Monaco) => {
     console.log('Editor mounted successfully');
     // Apply nonces to Monaco's dynamic elements
     noncePlugin.afterEditorMount(editor, monaco);
@@ -62,7 +66,7 @@ const MonacoEditor: React.FC = () => {
     editor.focus();
   };
 
-  const handleEditorWillMount = (monaco: any) => {
+  const handleEditorWillMount = (monaco: Monaco) => {
     console.log('Editor will mount');
     // Apply nonces to Monaco before mounting
     noncePlugin.beforeEditorMount(monaco);
@@ -70,6 +74,8 @@ const MonacoEditor: React.FC = () => {
   };
 
   const handleBackToHome = () => {
+    setFilePath(null);
+    setContent('');
     navigate('/');
   };
 
@@ -87,12 +93,12 @@ const MonacoEditor: React.FC = () => {
         <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl w-full">
           <h2 className="text-xl font-bold text-red-600 mb-4">Error</h2>
           <p className="text-gray-700 mb-4">{error}</p>
-          <button
+          <Button
             onClick={handleBackToHome}
-            className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition-colors"
+            variant="default"
           >
             Back to Home
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -103,30 +109,45 @@ const MonacoEditor: React.FC = () => {
       {filePath && (
         <div className="bg-gray-100 p-2 text-sm text-gray-700 border-b flex justify-between items-center">
           <span>{filePath}</span>
-          <button
+          <Button
             onClick={handleBackToHome}
-            className="text-blue-600 hover:text-blue-800 text-sm"
+            variant="ghost"
+            size="sm"
+            className="text-blue-600 hover:text-blue-800"
           >
             Back to Home
-          </button>
+          </Button>
         </div>
       )}
-      <div className="flex-grow editor-container">
-        <Editor
-          height="100%"
-          defaultLanguage={language}
-          defaultValue={content}
-          theme="vs-dark"
-          onChange={handleEditorChange}
-          onMount={handleEditorDidMount}
-          beforeMount={handleEditorWillMount}
-          loading={<p className="p-4">Loading editor...</p>}
-          options={{
-            minimap: { enabled: true },
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-          }}
-        />
+      <div className="flex-grow flex">
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          <ResizablePanel defaultSize={70} minSize={30}>
+            <div className="h-full editor-container">
+              <Editor
+                height="100%"
+                defaultLanguage={language}
+                defaultValue={content}
+                theme="vs-light"
+                onChange={handleEditorChange}
+                onMount={handleEditorDidMount}
+                beforeMount={handleEditorWillMount}
+                loading={<p className="p-4">Loading editor...</p>}
+                options={{
+                  minimap: { enabled: true },
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                }}
+              />
+            </div>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={30} minSize={20} maxSize={40}>
+            <div className="h-full flex flex-col">
+              <ThreadList />
+              <Thread />
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );
