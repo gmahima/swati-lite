@@ -1,19 +1,5 @@
 import type { ChatModelAdapter, ChatModelRunOptions, ChatModelRunResult, ThreadMessage, ThreadAssistantContentPart } from '@assistant-ui/react';
 
-declare global {
-  interface Window {
-    electronAPI: {
-      chat: (messages: { role: 'user' | 'assistant' | 'system'; content: string }[]) => Promise<string>;
-      ipcRenderer: {
-        on: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
-        once: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
-        send: (channel: string, ...args: any[]) => void;
-        removeListener: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
-      };
-    }
-  }
-}
-
 export const chatModelAdapter: ChatModelAdapter = {
   async run(options: ChatModelRunOptions): Promise<ChatModelRunResult> {
     try {

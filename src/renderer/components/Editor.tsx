@@ -7,6 +7,7 @@ import { ChatSidebar } from '@components/ChatSidebar';
 import { ThreadList } from './assistant-ui/thread-list';
 import { Thread } from './assistant-ui/thread';
 import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from './ui/resizable';
+import FileExplorer from './FileExplorer';
 
 const MonacoEditor: React.FC = () => {
   const [content, setContent] = useState<string>('');
@@ -14,6 +15,7 @@ const MonacoEditor: React.FC = () => {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [rootPath, setRootPath] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -23,33 +25,56 @@ const MonacoEditor: React.FC = () => {
     return cleanup;
   }, []);
 
+  // Load file content when filePath changes
   useEffect(() => {
-    const loadFile = async () => {
-      const queryParams = new URLSearchParams(location.search);
-      const path = queryParams.get('path');
+    const loadFileContent = async () => {
+      if (!filePath) return;
       
-      if (path) {
-        try {
-          setIsLoading(true);
-          setError(null);
-          setFilePath(path);
-          
-          const result = await window.electronAPI.readFile(path);
-          
-          if (result) {
-            setContent(result.content);
-            setLanguage(result.language);
-          }
-        } catch (err) {
-          console.error('Error loading file:', err);
-          setError(`Failed to load file: ${err instanceof Error ? err.message : String(err)}`);
-        } finally {
-          setIsLoading(false);
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        const result = await window.electronAPI.readFile(filePath);
+        if (result) {
+          setContent(result.content);
+          setLanguage(result.language);
         }
+      } catch (err) {
+        console.error('Error loading file:', err);
+        setError(`Failed to load file: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setIsLoading(false);
       }
     };
     
-    loadFile();
+    loadFileContent();
+  }, [filePath]);
+
+  // Set root path and initial file path from URL
+  useEffect(() => {
+    const queryParams = new URLSearchParams(location.search);
+    const path = queryParams.get('path');
+    
+    if (path) {
+      setFilePath(path);
+      
+      // Set root path based on whether it's a file or directory
+      const setRootPathFromPath = async () => {
+        try {
+          const stats = await window.electronAPI.getStats(path);
+          if (stats.isDirectory) {
+            setRootPath(path);
+          } else {
+            setRootPath(path.substring(0, path.lastIndexOf('/')));
+          }
+        } catch (err) {
+          console.error('Error getting path stats:', err);
+          setError(`Failed to get path stats: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      };
+      
+      setRootPathFromPath();
+    }
   }, [location.search]);
 
   const handleEditorChange = (value: string | undefined) => {
@@ -60,23 +85,29 @@ const MonacoEditor: React.FC = () => {
 
   const handleEditorDidMount = (editor: any, monaco: Monaco) => {
     console.log('Editor mounted successfully');
-    // Apply nonces to Monaco's dynamic elements
     noncePlugin.afterEditorMount(editor, monaco);
-    // You can customize editor here
     editor.focus();
   };
 
   const handleEditorWillMount = (monaco: Monaco) => {
     console.log('Editor will mount');
-    // Apply nonces to Monaco before mounting
     noncePlugin.beforeEditorMount(monaco);
-    // You can customize Monaco instance here before editor is mounted
   };
 
   const handleBackToHome = () => {
     setFilePath(null);
     setContent('');
     navigate('/');
+  };
+
+  const handleFileSelect = async (path: string) => {
+    try {
+      setError(null);
+      navigate(`/editor?path=${encodeURIComponent(path)}`);
+    } catch (err) {
+      console.error('Error selecting file:', err);
+      setError(`Failed to select file: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   if (isLoading) {
@@ -121,7 +152,17 @@ const MonacoEditor: React.FC = () => {
       )}
       <div className="flex-grow flex">
         <ResizablePanelGroup direction="horizontal" className="h-full">
-          <ResizablePanel defaultSize={70} minSize={30}>
+          {rootPath && (
+            <>
+              <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
+                <div className="h-full border-r border-gray-200">
+                  <FileExplorer rootPath={rootPath} onFileSelect={handleFileSelect} />
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+            </>
+          )}
+          <ResizablePanel defaultSize={50} minSize={30}>
             <div className="h-full editor-container">
               <Editor
                 height="100%"

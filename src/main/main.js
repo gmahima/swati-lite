@@ -6,8 +6,81 @@ const crypto = require('crypto');
 import { handleChat } from './chat-handler.ts';
 import { ChatOpenAI } from '@langchain/openai';
 
-// Initialize electron-store for persistent data
-const store = new Store();
+// Define schema for electron-store
+const schema = {
+  recentProjects: {
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        name: { type: 'string' },
+        lastOpened: { type: 'number' }
+      },
+      required: ['path', 'name', 'lastOpened']
+    },
+    default: []
+  },
+  expandedDirs: {
+    type: 'object',
+    additionalProperties: {
+      type: 'array',
+      items: { type: 'string' },
+      default: []
+    },
+    default: {}
+  }
+};
+
+// Initialize electron-store with schema
+const store = new Store({ schema });
+
+// Read directory contents recursively
+const readDirectoryRecursive = async (dirPath) => {
+  try {
+    const stats = await fs.promises.stat(dirPath);
+    if (!stats.isDirectory()) {
+      throw new Error('Path is not a directory');
+    }
+
+    const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    const children = await Promise.all(
+      items.map(async item => {
+        const fullPath = path.join(dirPath, item.name);
+        const stats = await fs.promises.stat(fullPath);
+        
+        if (stats.isDirectory()) {
+          // Recursively read subdirectories
+          return readDirectoryRecursive(fullPath);
+        } else {
+          return {
+            name: item.name,
+            path: fullPath,
+            type: 'file'
+          };
+        }
+      })
+    );
+
+    // Sort directories first, then files, both alphabetically
+    children.sort((a, b) => {
+      if (a.type === b.type) {
+        return a.name.localeCompare(b.name);
+      }
+      return a.type === 'directory' ? -1 : 1;
+    });
+
+    return {
+      name: path.basename(dirPath),
+      path: dirPath,
+      type: 'directory',
+      children
+    };
+  } catch (error) {
+    console.error(`Error reading directory ${dirPath}:`, error);
+    throw error;
+  }
+};
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -189,6 +262,16 @@ const createWindow = () => {
   });
 };
 
+// Read directory contents
+ipcMain.handle('directory:read', async (event, dirPath) => {
+  try {
+    return await readDirectoryRecursive(dirPath);
+  } catch (error) {
+    console.error('Error reading directory:', error);
+    throw error;
+  }
+});
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -303,6 +386,41 @@ app.whenReady().then(() => {
     } catch (error) {
       console.error('Error setting up chat stream:', error);
       event.sender.send('chat:error', error.message);
+    }
+  });
+  
+  // Get file/directory stats
+  ipcMain.handle('file:getStats', async (event, filePath) => {
+    try {
+      const stats = fs.statSync(filePath);
+      return {
+        isDirectory: stats.isDirectory()
+      };
+    } catch (error) {
+      console.error('Error getting file stats:', error);
+      throw error;
+    }
+  });
+  
+  // Get expanded directories for a root path
+  ipcMain.handle('directory:getExpandedDirs', async (event, rootPath) => {
+    try {
+      const expandedDirs = store.get(`expandedDirs.${rootPath}`) || [];
+      return expandedDirs;
+    } catch (error) {
+      console.error('Error getting expanded directories:', error);
+      return [];
+    }
+  });
+
+  // Save expanded directories for a root path
+  ipcMain.handle('directory:saveExpandedDirs', async (event, rootPath, expandedDirs) => {
+    try {
+      store.set(`expandedDirs.${rootPath}`, expandedDirs);
+      return true;
+    } catch (error) {
+      console.error('Error saving expanded directories:', error);
+      return false;
     }
   });
   
