@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Button } from "@ui/button";
-import { ChevronLeft, ChevronRight, MessageSquare, Send } from "lucide-react";
+import { Button } from "@/renderer/components/ui/button";
+import { ChevronRight, MessageSquare, Send } from "lucide-react";
 
 interface ChatMessage {
   id: string;
@@ -84,33 +84,35 @@ export function ChatSidebar() {
         </Button>
       </div>
       
-      <div className="flex-1 overflow-auto p-4 space-y-4">
-        {messages.map((message) => (
-          <div 
-            key={message.id} 
-            className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
-          >
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col-reverse">
+        <div className="flex flex-col-reverse space-y-reverse space-y-4">
+          {messages.map((message) => (
             <div 
-              className={`max-w-[85%] rounded-lg p-3 ${
-                message.role === "assistant" 
-                  ? "bg-gray-100 text-gray-800" 
-                  : "bg-blue-600 text-white"
-              }`}
+              key={message.id} 
+              className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
             >
-              <p className="text-sm">{message.content}</p>
               <div 
-                className={`text-xs mt-1 ${
-                  message.role === "assistant" ? "text-gray-500" : "text-blue-200"
+                className={`max-w-[85%] rounded-lg p-3 ${
+                  message.role === "assistant" 
+                    ? "bg-gray-100 text-gray-800" 
+                    : "bg-blue-600 text-white"
                 }`}
               >
-                {message.timestamp.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                <p className="text-sm">{message.content}</p>
+                <div 
+                  className={`text-xs mt-1 ${
+                    message.role === "assistant" ? "text-gray-500" : "text-blue-200"
+                  }`}
+                >
+                  {message.timestamp.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
       
-      <div className="p-3 border-t border-gray-200">
+      <div className="p-3 border-t border-gray-200 bg-white">
         <div className="flex items-end gap-2">
           <div className="flex-1 border rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-blue-500">
             <textarea
@@ -118,7 +120,7 @@ export function ChatSidebar() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask a question..."
-              className="w-full p-2 text-sm outline-none resize-none min-h-[60px] max-h-[150px]"
+              className="w-full p-2 text-sm outline-none resize-none min-h-[60px] max-h-[150px] overflow-y-auto"
               rows={2}
             />
           </div>

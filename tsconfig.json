@@ -13,11 +13,7 @@
       "noEmit": true,
       "baseUrl": ".",
       "paths": {
-        "@/*": ["src/*"],
-        "@components/*": ["src/renderer/components/*"],
-        "@lib/*": ["src/lib/*"],
-        "@hooks/*": ["src/hooks/*"],
-        "@ui/*": ["src/renderer/components/ui/*"]
+        "@/*": ["src/*"]
       }
     },
     "include": ["src/**/*.js", "src/**/*.jsx", "src/**/*.ts", "src/**/*.tsx"]

@@ -1,15 +1,14 @@
 "use client";
 
-import type { FC, ReactNode } from "react";
 import { ComponentPropsWithoutRef, forwardRef } from "react";
 
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@ui/tooltip";
-import { Button } from "@ui/button";
-import { cn } from "@lib/utils";
+} from "@/renderer/components/ui/tooltip";
+import { Button } from "@/renderer/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export type TooltipIconButtonProps = ComponentPropsWithoutRef<typeof Button> & {
   tooltip: string;

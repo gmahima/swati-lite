@@ -5,16 +5,14 @@ import {
 } from "@assistant-ui/react";
 import { ArchiveIcon, PlusIcon } from "lucide-react";
 
-import { Button } from "@ui/button";
-import { TooltipIconButton } from "./tooltip-icon-button";
+import { Button } from "@/renderer/components/ui/button";
+import { TooltipIconButton } from "@/renderer/components/assistant-ui/tooltip-icon-button";
 
 export const ThreadList: FC = () => {
   return (
-    <ThreadListPrimitive.Root className="flex h-full flex-col">
-      <div className="flex flex-col gap-2 p-4">
-        <ThreadListNew />
-        <ThreadListItems />
-      </div>
+    <ThreadListPrimitive.Root className="flex flex-col items-stretch gap-1.5">
+      <ThreadListNew />
+      <ThreadListItems />
     </ThreadListPrimitive.Root>
   );
 };
@@ -22,28 +20,21 @@ export const ThreadList: FC = () => {
 const ThreadListNew: FC = () => {
   return (
     <ThreadListPrimitive.New asChild>
-      <Button 
-        className="data-[active]:bg-muted hover:bg-muted flex items-center justify-start gap-2 rounded-lg px-3 py-2 text-start transition-colors" 
-        variant="ghost"
-      >
-        <PlusIcon className="size-4" />
-        <span className="font-medium">New Thread</span>
+      <Button className="data-[active]:bg-muted hover:bg-muted flex items-center justify-start gap-1 rounded-lg px-2.5 py-2 text-start" variant="ghost">
+        <PlusIcon />
+        New Thread
       </Button>
     </ThreadListPrimitive.New>
   );
 };
 
 const ThreadListItems: FC = () => {
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <ThreadListPrimitive.Items components={{ ThreadListItem }} />
-    </div>
-  );
+  return <ThreadListPrimitive.Items components={{ ThreadListItem }} />;
 };
 
 const ThreadListItem: FC = () => {
   return (
-    <ThreadListItemPrimitive.Root className="group data-[active]:bg-muted hover:bg-muted focus-visible:bg-muted focus-visible:ring-ring flex items-center gap-2 rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2">
+    <ThreadListItemPrimitive.Root className="data-[active]:bg-muted hover:bg-muted focus-visible:bg-muted focus-visible:ring-ring flex items-center gap-2 rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2">
       <ThreadListItemPrimitive.Trigger className="flex-grow px-3 py-2 text-start">
         <ThreadListItemTitle />
       </ThreadListItemPrimitive.Trigger>
@@ -54,7 +45,7 @@ const ThreadListItem: FC = () => {
 
 const ThreadListItemTitle: FC = () => {
   return (
-    <p className="text-sm font-medium line-clamp-1">
+    <p className="text-sm">
       <ThreadListItemPrimitive.Title fallback="New Chat" />
     </p>
   );
@@ -64,7 +55,7 @@ const ThreadListItemArchive: FC = () => {
   return (
     <ThreadListItemPrimitive.Archive asChild>
       <TooltipIconButton
-        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground ml-auto mr-2 size-4 p-0 transition-opacity"
+        className="hover:text-primary text-foreground ml-auto mr-3 size-4 p-0"
         variant="ghost"
         tooltip="Archive thread"
       >

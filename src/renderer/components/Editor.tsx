@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import Editor, { Monaco } from '@monaco-editor/react';
 import noncePlugin from '../MonacoNoncePlugin';
 import { Button } from './ui/button';
-import { ChatSidebar } from '@components/ChatSidebar';
+import { ChatSidebar } from '@/renderer/components/ChatSidebar';
 import { ThreadList } from './assistant-ui/thread-list';
 import { Thread } from './assistant-ui/thread';
 import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from './ui/resizable';
@@ -132,7 +132,7 @@ const MonacoEditor: React.FC = () => {
           </Button>
         </div>
       )}
-      <div className="flex-grow flex">
+      <div className="flex-grow flex min-h-0">
         <ResizablePanelGroup direction="horizontal" className="h-full">
           <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
             <div className="h-full border-r border-gray-200">

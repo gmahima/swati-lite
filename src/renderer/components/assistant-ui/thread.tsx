@@ -16,18 +16,18 @@ import {
   RefreshCwIcon,
   SendHorizontalIcon,
 } from "lucide-react";
-import { cn } from "@lib/utils";
+import { cn } from "@/lib/utils";
 
-import { Button } from "@ui/button";
-import { MarkdownText } from "./markdown-text";
-import { TooltipIconButton } from "./tooltip-icon-button";
+import { Button } from "@/renderer/components/ui/button";
+import { MarkdownText } from "@/renderer/components/assistant-ui/markdown-text";
+import { TooltipIconButton } from "@/renderer/components/assistant-ui/tooltip-icon-button";
 
 export const Thread: FC = () => {
   return (
     <ThreadPrimitive.Root
       className="bg-background box-border flex h-full flex-col overflow-hidden"
       style={{
-        ["--thread-max-width" as string]: "100%",
+        ["--thread-max-width" as string]: "42rem",
       }}
     >
       <ThreadPrimitive.Viewport className="flex h-full flex-col items-center overflow-y-scroll scroll-smooth bg-inherit px-4 pt-8">
@@ -45,7 +45,7 @@ export const Thread: FC = () => {
           <div className="min-h-8 flex-grow" />
         </ThreadPrimitive.If>
 
-        <div className="sticky bottom-0 mt-3 flex w-full flex-col items-center justify-end rounded-t-lg bg-inherit pb-4">
+        <div className="sticky bottom-0 mt-3 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end rounded-t-lg bg-inherit pb-4">
           <ThreadScrollToBottom />
           <Composer />
         </div>
@@ -60,10 +60,9 @@ const ThreadScrollToBottom: FC = () => {
       <TooltipIconButton
         tooltip="Scroll to bottom"
         variant="outline"
-        size="sm"
-        className="absolute -top-8 rounded-full disabled:invisible hover:bg-muted"
+        className="absolute -top-8 rounded-full disabled:invisible"
       >
-        <ArrowDownIcon className="size-4" />
+        <ArrowDownIcon />
       </TooltipIconButton>
     </ThreadPrimitive.ScrollToBottom>
   );
@@ -133,10 +132,9 @@ const ComposerAction: FC = () => {
           <TooltipIconButton
             tooltip="Send"
             variant="default"
-            size="sm"
-            className="my-2.5 size-8 p-2 transition-all ease-in hover:bg-primary/90"
+            className="my-2.5 size-8 p-2 transition-opacity ease-in"
           >
-            <SendHorizontalIcon className="size-4" />
+            <SendHorizontalIcon />
           </TooltipIconButton>
         </ComposerPrimitive.Send>
       </ThreadPrimitive.If>
@@ -144,9 +142,8 @@ const ComposerAction: FC = () => {
         <ComposerPrimitive.Cancel asChild>
           <TooltipIconButton
             tooltip="Cancel"
-            variant="destructive"
-            size="sm"
-            className="my-2.5 size-8 p-2 transition-all ease-in hover:bg-destructive/90"
+            variant="default"
+            className="my-2.5 size-8 p-2 transition-opacity ease-in"
           >
             <CircleStopIcon />
           </TooltipIconButton>
@@ -178,13 +175,8 @@ const UserActionBar: FC = () => {
       className="flex flex-col items-end col-start-1 row-start-2 mr-3 mt-2.5"
     >
       <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton 
-          tooltip="Edit"
-          variant="ghost"
-          size="sm"
-          className="hover:bg-muted"
-        >
-          <PencilIcon className="size-4" />
+        <TooltipIconButton tooltip="Edit">
+          <PencilIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.Edit>
     </ActionBarPrimitive.Root>
@@ -198,10 +190,10 @@ const EditComposer: FC = () => {
 
       <div className="mx-3 mb-3 flex items-center justify-center gap-2 self-end">
         <ComposerPrimitive.Cancel asChild>
-          <Button variant="ghost" size="sm" className="hover:bg-muted/80">Cancel</Button>
+          <Button variant="ghost">Cancel</Button>
         </ComposerPrimitive.Cancel>
         <ComposerPrimitive.Send asChild>
-          <Button size="sm" className="hover:bg-primary/90">Send</Button>
+          <Button>Send</Button>
         </ComposerPrimitive.Send>
       </div>
     </ComposerPrimitive.Root>
@@ -280,18 +272,12 @@ const CircleStopIcon = () => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="size-4"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      width="16"
+      height="16"
     >
-      <circle cx="12" cy="12" r="10" />
-      <rect width="6" height="6" x="9" y="9" />
+      <rect width="10" height="10" x="3" y="3" rx="2" />
     </svg>
   );
 };
