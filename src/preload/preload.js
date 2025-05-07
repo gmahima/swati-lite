@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getStats: (path) => ipcRenderer.invoke('file:getStats', path),
   getExpandedDirs: (rootPath) => ipcRenderer.invoke('directory:getExpandedDirs', rootPath),
   saveExpandedDirs: (rootPath, expandedDirs) => ipcRenderer.invoke('directory:saveExpandedDirs', rootPath, expandedDirs),
+  getWorkspaceRoot: () => ipcRenderer.invoke('app:getWorkspaceRoot'),
   ipcRenderer: {
     on: (channel, listener) => ipcRenderer.on(channel, listener),
     once: (channel, listener) => ipcRenderer.once(channel, listener),

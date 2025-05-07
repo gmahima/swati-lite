@@ -29,6 +29,10 @@ const schema = {
       default: []
     },
     default: {}
+  },
+  workspaceRoot: {
+    type: 'string',
+    default: ''
   }
 };
 
@@ -278,6 +282,14 @@ ipcMain.handle('directory:read', async (event, dirPath) => {
 app.whenReady().then(() => {
   // Set up IPC handlers for file operations
   
+  // Get workspace root
+  ipcMain.handle('app:getWorkspaceRoot', () => {
+    const root = store.get('workspaceRoot');
+    console.log('Getting workspace root from store:', root);
+    console.log('Store contents:', store.store);
+    return root || '';
+  });
+  
   // Open folder dialog
   ipcMain.handle('dialog:openFolder', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
@@ -286,6 +298,11 @@ app.whenReady().then(() => {
     
     if (!canceled && filePaths.length > 0) {
       const folderPath = filePaths[0];
+      console.log('About to save workspace root:', folderPath);
+      // Save the workspace root
+      store.set('workspaceRoot', folderPath);
+      console.log('Workspace root saved. Current store contents:', store.store);
+      console.log('Verifying saved workspace root:', store.get('workspaceRoot'));
       addToRecentProjects(folderPath);
       return {
         path: folderPath,

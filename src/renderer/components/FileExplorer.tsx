@@ -3,7 +3,6 @@ import { ChevronRight, ChevronDown, File, Folder } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface FileExplorerProps {
-  rootPath: string;
   onFileSelect: (path: string) => void;
 }
 
@@ -14,30 +13,43 @@ interface FileNode {
   children?: FileNode[];
 }
 
-const FileExplorer: React.FC<FileExplorerProps> = ({ rootPath, onFileSelect }) => {
-  // Keep the entire file tree in memory
+const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
-  // Only track which directories are expanded
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [workspaceRoot, setWorkspaceRoot] = useState<string>('');
 
-  // Load the entire file tree when rootPath changes
   useEffect(() => {
     const loadFileTree = async () => {
       try {
         setIsLoading(true);
         setError(null);
         
+        // Get workspace root from main process
+        console.log('FileExplorer: Requesting workspace root...');
+        const root = await window.electronAPI.getWorkspaceRoot();
+        console.log('FileExplorer: Received workspace root:', root);
+        console.log('FileExplorer: Root type:', typeof root);
+        console.log('FileExplorer: Root length:', root ? root.length : 0);
+        
+        if (!root) {
+          console.log('FileExplorer: No workspace root found');
+          setError('No workspace selected. Please open a folder to begin.');
+          setIsLoading(false);
+          return;
+        }
+        
+        setWorkspaceRoot(root);
+        console.log('FileExplorer: Set workspace root state to:', root);
+        
         // Load expanded directories from electron-store
-        const savedExpandedDirs = await window.electronAPI.getExpandedDirs(rootPath);
+        const savedExpandedDirs = await window.electronAPI.getExpandedDirs(root);
         setExpandedDirs(new Set(savedExpandedDirs));
         
-        // Only load the file tree if we don't have it yet
-        if (!fileTree) {
-          const tree = await window.electronAPI.readDirectory(rootPath);
-          setFileTree(tree);
-        }
+        // Load the complete file tree from the workspace root
+        const tree = await window.electronAPI.readDirectory(root);
+        setFileTree(tree);
       } catch (err) {
         console.error('Error loading file tree:', err);
         setError(`Failed to load file tree: ${err instanceof Error ? err.message : String(err)}`);
@@ -47,7 +59,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ rootPath, onFileSelect }) =
     };
     
     loadFileTree();
-  }, [rootPath, fileTree]);
+  }, [workspaceRoot]);
 
   const toggleDirectory = useCallback(async (dirPath: string) => {
     setExpandedDirs(prev => {
@@ -59,11 +71,11 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ rootPath, onFileSelect }) =
       }
       
       // Save expanded directories to electron-store
-      window.electronAPI.saveExpandedDirs(rootPath, Array.from(newExpandedDirs));
+      window.electronAPI.saveExpandedDirs(workspaceRoot, Array.from(newExpandedDirs));
       
       return newExpandedDirs;
     });
-  }, [rootPath]);
+  }, [workspaceRoot]);
 
   const renderFileNode = (node: FileNode) => {
     const isExpanded = expandedDirs.has(node.path);
@@ -87,7 +99,11 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ rootPath, onFileSelect }) =
             variant="ghost"
             size="sm"
             className="flex-1 justify-start px-2 h-6"
-            onClick={() => node.type === 'file' && onFileSelect(node.path)}
+            onClick={() => {
+              if (node.type === 'file') {
+                onFileSelect(node.path);
+              }
+            }}
           >
             {node.type === 'directory' ? (
               <Folder className="h-4 w-4 mr-2 text-blue-500" />
@@ -97,7 +113,6 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ rootPath, onFileSelect }) =
             <span className="truncate">{node.name}</span>
           </Button>
         </div>
-        {/* Only toggle visibility, don't modify the tree structure */}
         {node.type === 'directory' && isExpanded && node.children && (
           <div className="pl-2">
             {node.children.map(child => renderFileNode(child))}

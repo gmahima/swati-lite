@@ -15,7 +15,6 @@ const MonacoEditor: React.FC = () => {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [rootPath, setRootPath] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -50,30 +49,13 @@ const MonacoEditor: React.FC = () => {
     loadFileContent();
   }, [filePath]);
 
-  // Set root path and initial file path from URL
+  // Set initial file path from URL
   useEffect(() => {
     const queryParams = new URLSearchParams(location.search);
     const path = queryParams.get('path');
     
     if (path) {
       setFilePath(path);
-      
-      // Set root path based on whether it's a file or directory
-      const setRootPathFromPath = async () => {
-        try {
-          const stats = await window.electronAPI.getStats(path);
-          if (stats.isDirectory) {
-            setRootPath(path);
-          } else {
-            setRootPath(path.substring(0, path.lastIndexOf('/')));
-          }
-        } catch (err) {
-          console.error('Error getting path stats:', err);
-          setError(`Failed to get path stats: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      };
-      
-      setRootPathFromPath();
     }
   }, [location.search]);
 
@@ -152,16 +134,12 @@ const MonacoEditor: React.FC = () => {
       )}
       <div className="flex-grow flex">
         <ResizablePanelGroup direction="horizontal" className="h-full">
-          {rootPath && (
-            <>
-              <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
-                <div className="h-full border-r border-gray-200">
-                  <FileExplorer rootPath={rootPath} onFileSelect={handleFileSelect} />
-                </div>
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-            </>
-          )}
+          <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
+            <div className="h-full border-r border-gray-200">
+              <FileExplorer onFileSelect={handleFileSelect} />
+            </div>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
           <ResizablePanel defaultSize={50} minSize={30}>
             <div className="h-full editor-container">
               <Editor

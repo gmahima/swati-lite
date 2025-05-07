@@ -19,6 +19,7 @@ interface ElectronAPI {
   getStats: (path: string) => Promise<{ isDirectory: boolean }>;
   getExpandedDirs: (rootPath: string) => Promise<string[]>;
   saveExpandedDirs: (rootPath: string, expandedDirs: string[]) => Promise<boolean>;
+  getWorkspaceRoot: () => Promise<string>;
   ipcRenderer: {
     on: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
     once: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
