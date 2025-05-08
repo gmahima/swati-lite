@@ -446,29 +446,42 @@ app.whenReady().then(() => {
   
 
   
-  ipcMain.on('chat:send', async (event, messages) => {
+  ipcMain.on('chat:send', async (event, payload) => {
     try {
-      console.log("Received chat request in main process:", messages);
+      console.log("Received chat request in main process:", payload);
       
       // Create a ChatGroq instance with the correct configuration
       const model = new ChatGroq({ 
-        model: "llama3-8b-8192", // Use modelName instead of the groq() function
+        model: "llama3-8b-8192",
         temperature: 0.7,
         maxTokens: 1000,
         apiKey: GROQ_API_KEY
       });
       
-      // Format messages if needed
-      const formattedMessages = messages.map(message => ({
-        role: message.role,
-        content: message.content
-      }));
-      console.log("formattedMessages", formattedMessages);
-      const response = await model.invoke(formattedMessages);
+      // Extract the message and file context from the payload
+      const { message, fileContext } = payload;
+      
+      // In a real implementation, you would fetch previous messages from a database/storage here
+      // For now, we'll just create an array with the context (if provided) and the current message
+      const messagesForModel = [];
+      
+      // Add file context if available
+      if (fileContext) {
+        messagesForModel.push(fileContext);
+      }
+      
+      // Add the current message
+      messagesForModel.push(message);
+      
+      console.log("Sending to model:", messagesForModel);
+      const response = await model.invoke(messagesForModel);
+      
       console.log("response============================================");
       event.sender.send('chat:response', response.content);
       console.log("response.content", response.content);
       console.log("sent response============================================");
+      
+      // TODO: In the future, you would store both the message and response in your backend storage
     } catch (error) {
       console.error('Error in chat:send:', error);
       event.sender.send('chat:response', `Error: ${error.message}`);

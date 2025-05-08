@@ -28,7 +28,9 @@ interface ChatContextType {
   messages: MessageType[];
   input: string;
   isLoading: boolean;
+  includeFileContext: boolean;
   setInput: (input: string) => void;
+  toggleFileContext: () => void;
   append: (
     message: Omit<MessageType, "id">
   ) => Promise<string | null | undefined>;
@@ -71,7 +73,12 @@ export const ChatProvider: React.FC<{children: React.ReactNode}> = ({
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [includeFileContext, setIncludeFileContext] = useState<boolean>(false);
   const { filePath } = useAppContext();
+
+  const toggleFileContext = () => {
+    setIncludeFileContext(prev => !prev);
+  };
 
   // We can use the filePath to add context to our messages
   useEffect(() => {
@@ -154,41 +161,29 @@ export const ChatProvider: React.FC<{children: React.ReactNode}> = ({
       setIsLoading(true);
 
       try {
-        // Ensure messages is an array before mapping
-        let messagesToSend = messages;
-        if (!Array.isArray(messagesToSend)) {
-          console.error(`[ChatProvider ${instanceId.current}] messages is not an array:`, messages);
-          // Use an empty array as fallback
-          messagesToSend = [];
-        }
-
-        // Add current file context if available
-        const contextualMessages = [
-          ...messagesToSend.map(msg => ({
-            role: msg.role,
-            content: msg.content,
-          }))
-        ];
-
-        // Add file context if available
-        if (filePath) {
-          contextualMessages.unshift({
-            role: "system" as const,
-            content: `User is currently viewing file: ${filePath}`
-          });
-        }
-
-        // Add the user message
-        contextualMessages.push({
+        // Only send the current message and context information
+        const messageToSend = {
           role: message.role,
           content: message.content,
-        });
+        };
 
-        // Send to the backend without request ID
+        // Add file context if enabled
+        let fileContext = null;
+        if (filePath && includeFileContext) {
+          fileContext = {
+            role: "system" as const,
+            content: `User is currently viewing file: ${filePath}`
+          };
+        }
+
+        // Send to the backend - just the current message and optional context
         console.log(`[ChatProvider ${instanceId.current}] Sending message`);
-        window.electronAPI.ipcRenderer.send("chat:send", contextualMessages);
+        window.electronAPI.ipcRenderer.send("chat:send", { 
+          message: messageToSend, 
+          fileContext
+        });
       } catch (error) {
-        console.error(`[ChatProvider ${instanceId.current}] Error preparing messages:`, error);
+        console.error(`[ChatProvider ${instanceId.current}] Error preparing message:`, error);
         setIsLoading(false);
       }
     }
@@ -209,7 +204,9 @@ export const ChatProvider: React.FC<{children: React.ReactNode}> = ({
     messages,
     input,
     isLoading,
+    includeFileContext,
     setInput,
+    toggleFileContext,
     append,
     setMessages,
     reload,
@@ -294,7 +291,7 @@ const AiChat: React.FC = () => {
 
 function CustomChat() {
   const handler = useCustomChat();
-  const {input, setInput, isLoading, append} = handler;
+  const {input, setInput, isLoading, append, includeFileContext, toggleFileContext} = handler;
   const { filePath } = useAppContext();
 
   const handleSubmit = async (e: FormEvent) => {
@@ -324,6 +321,20 @@ function CustomChat() {
               }
               disabled={isLoading}
             />
+            {filePath && (
+              <button
+                type="button"
+                onClick={toggleFileContext}
+                className={`ml-2 px-3 py-1 rounded text-sm ${
+                  includeFileContext 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-200 text-gray-700'
+                }`}
+                title={includeFileContext ? "File context will be included" : "File context will not be included"}
+              >
+                {includeFileContext ? "📎 File" : "📎"}
+              </button>
+            )}
             <button
               type="submit"
               className="ml-2 bg-blue-500 text-white rounded px-3 py-1"
@@ -337,6 +348,7 @@ function CustomChat() {
       {filePath && (
         <div className="px-2 py-1 text-xs text-gray-500 border-t">
           Current file: {filePath}
+          {includeFileContext && <span className="ml-1 text-blue-500">(included in chat)</span>}
         </div>
       )}
     </ChatSection>
