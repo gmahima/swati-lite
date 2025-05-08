@@ -1,30 +1,20 @@
 interface ElectronAPI {
-  openFolder: () => Promise<{ path: string, name: string } | null>;
-  openFile: () => Promise<{ path: string, name: string } | null>;
-  readFile: (path: string) => Promise<{ content: string, language: string }>;
-  saveFile: (path: string, content: string) => Promise<boolean>;
-  getRecentProjects: () => Promise<Array<{ path: string, name: string, lastOpened: number }>>;
-  getCspNonces: () => Promise<{ scriptNonce: string, styleNonce: string }>;
-  chat: (messages: { role: 'user' | 'assistant' | 'system'; content: string }[]) => Promise<string>;
-  readDirectory: (path: string) => Promise<{
-    name: string;
-    path: string;
-    type: 'file' | 'directory';
-    children?: Array<{
-      name: string;
-      path: string;
-      type: 'file' | 'directory';
-    }>;
-  }>;
-  getStats: (path: string) => Promise<{ isDirectory: boolean }>;
+  openFolder: () => Promise<{ path: string } | null>;
+  openFile: () => Promise<{ path: string } | null>;
+  readFile: (path: string) => Promise<{ content: string; language: string }>;
+  saveFile: (path: string, content: string) => Promise<void>;
+  getRecentProjects: () => Promise<any[]>;
+  getCspNonces: () => Promise<{ scriptNonce: string; styleNonce: string }>;
+  readDirectory: (path: string) => Promise<any>;
+  getStats: (path: string) => Promise<any>;
   getExpandedDirs: (rootPath: string) => Promise<string[]>;
-  saveExpandedDirs: (rootPath: string, expandedDirs: string[]) => Promise<boolean>;
+  saveExpandedDirs: (rootPath: string, expandedDirs: string[]) => Promise<void>;
   getWorkspaceRoot: () => Promise<string>;
   ipcRenderer: {
-    on: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
-    once: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
+    on: (channel: string, listener: Function) => void;
+    once: (channel: string, listener: Function) => void;
     send: (channel: string, ...args: any[]) => void;
-    removeListener: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
+    removeListener: (channel: string, listener: Function) => void;
   };
 }
 

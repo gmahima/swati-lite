@@ -1,10 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { ChevronRight, ChevronDown, File, Folder } from 'lucide-react';
 import { Button } from './ui/button';
-
-interface FileExplorerProps {
-  onFileSelect: (path: string) => void;
-}
+import { useAppContext } from '../contexts/AppContext';
 
 interface FileNode {
   name: string;
@@ -13,7 +10,8 @@ interface FileNode {
   children?: FileNode[];
 }
 
-const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
+const FileExplorer: React.FC = () => {
+  const { setFilePath } = useAppContext();
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -77,6 +75,10 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
     });
   }, [workspaceRoot]);
 
+  const handleFileSelect = (path: string) => {
+    setFilePath(path);
+  };
+
   const renderFileNode = (node: FileNode) => {
     const isExpanded = expandedDirs.has(node.path);
     
@@ -101,7 +103,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
             className="flex-1 justify-start px-2 h-6"
             onClick={() => {
               if (node.type === 'file') {
-                onFileSelect(node.path);
+                handleFileSelect(node.path);
               }
             }}
           >

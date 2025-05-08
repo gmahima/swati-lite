@@ -1,10 +1,13 @@
 const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
+
+require('dotenv').config();
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const path = require('node:path');
 const fs = require('fs');
 const Store = require('electron-store');
 const crypto = require('crypto');
-import { handleChat } from './chat-handler.ts';
-import { ChatOpenAI } from '@langchain/openai';
+const { ChatGroq } = require("@langchain/groq");
+;
 
 // Define schema for electron-store
 const schema = {
@@ -266,6 +269,21 @@ const createWindow = () => {
   });
 };
 
+
+
+
+// async function streamChat(messages, onToken) {
+//   const result = await streamText({
+//     model: groq('llama3-8b-8192'),
+//     messages
+//   });
+//   for await (const delta of result.textStream) {
+//     // Each delta is a token/chunk
+//     onToken(delta);
+//   }
+// }
+
+
 // Read directory contents
 ipcMain.handle('directory:read', async (event, dirPath) => {
   try {
@@ -373,38 +391,9 @@ app.whenReady().then(() => {
     return store.get('recentProjects') || [];
   });
   
-  // Handle chat requests
-  ipcMain.handle('chat:send', async (event, messages) => {
-    try {
-      const result = await handleChat(messages);
-      return result;
-    } catch (error) {
-      console.error('Error handling chat request:', error);
-      throw error;
-    }
-  });
   
   // Handle streaming chat responses
-  ipcMain.on('chat:stream', (event, messages) => {
-    try {
-      const model = new ChatOpenAI({
-        streaming: true,
-        callbacks: [{
-          handleLLMNewToken(token) {
-            event.sender.send('chat:token', token);
-          },
-        }],
-      });
-      
-      handleChat(messages).catch(error => {
-        console.error('Error in streaming chat:', error);
-        event.sender.send('chat:error', error.message);
-      });
-    } catch (error) {
-      console.error('Error setting up chat stream:', error);
-      event.sender.send('chat:error', error.message);
-    }
-  });
+
   
   // Get file/directory stats
   ipcMain.handle('file:getStats', async (event, filePath) => {
@@ -440,7 +429,52 @@ app.whenReady().then(() => {
       return false;
     }
   });
+
+  // ipcMain.on('chat:stream', async (event, messages) => {
+  //   try {
+  //     await streamChat(messages, (token) => {
+  //       event.sender.send('chat:token', token);
+  //     })
+  //     event.sender.send('chat:done');
+  //   } catch (error) {
+  //     console.error('Error streaming chat:', error);
+  //     event.sender.send('chat:error', error.message);
+  //   }
+  // });
   
+  
+  
+
+  
+  ipcMain.on('chat:send', async (event, messages) => {
+    try {
+      console.log("Received chat request in main process:", messages);
+      
+      // Create a ChatGroq instance with the correct configuration
+      const model = new ChatGroq({ 
+        model: "llama3-8b-8192", // Use modelName instead of the groq() function
+        temperature: 0.7,
+        maxTokens: 1000,
+        apiKey: GROQ_API_KEY
+      });
+      
+      // Format messages if needed
+      const formattedMessages = messages.map(message => ({
+        role: message.role,
+        content: message.content
+      }));
+      console.log("formattedMessages", formattedMessages);
+      const response = await model.invoke(formattedMessages);
+      console.log("response============================================");
+      event.sender.send('chat:response', response.content);
+      console.log("response.content", response.content);
+      console.log("sent response============================================");
+    } catch (error) {
+      console.error('Error in chat:send:', error);
+      event.sender.send('chat:response', `Error: ${error.message}`);
+    }
+  });
+
   createWindow();
 
   // On OS X it's common to re-create a window in the app when the

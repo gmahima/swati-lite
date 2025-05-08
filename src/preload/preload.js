@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (path, content) => ipcRenderer.invoke('file:save', path, content),
   getRecentProjects: () => ipcRenderer.invoke('app:getRecentProjects'),
   getCspNonces: () => ipcRenderer.invoke('get-csp-nonces'),
-  chat: (messages) => ipcRenderer.invoke('chat:send', messages),
+  // chat: (messages) => ipcRenderer.invoke('chat:send', messages),
   readDirectory: (path) => ipcRenderer.invoke('directory:read', path),
   getStats: (path) => ipcRenderer.invoke('file:getStats', path),
   getExpandedDirs: (rootPath) => ipcRenderer.invoke('directory:getExpandedDirs', rootPath),
