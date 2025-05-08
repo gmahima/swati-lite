@@ -171,8 +171,7 @@ export const ChatProvider: React.FC<{children: React.ReactNode}> = ({
         let fileContext = null;
         if (filePath && includeFileContext) {
           fileContext = {
-            role: "system" as const,
-            content: `User is currently viewing file: ${filePath}`
+            filePath
           };
         }
 

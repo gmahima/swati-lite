@@ -7,6 +7,7 @@ const fs = require('fs');
 const Store = require('electron-store');
 const crypto = require('crypto');
 const { ChatGroq } = require("@langchain/groq");
+const { checkFileExists, embedFile, generateRagResponse } = require('./ragService');
 ;
 
 // Define schema for electron-store
@@ -392,8 +393,96 @@ app.whenReady().then(() => {
   });
   
   
-  // Handle streaming chat responses
-
+  // Handle RAG queries
+  ipcMain.on('chat:send', async (event, payload) => {
+    try {
+      console.log("Received chat request in main process:", payload);
+      
+      const { message, fileContext } = payload;
+      
+      // Check if we have file context with a file path, use RAG if available
+      if (fileContext && fileContext.filePath) {
+        const filePath = fileContext.filePath;
+        console.log(`Using RAG for file ${filePath}`);
+        
+        // Step 1: Check if the file already exists in the vector store
+        const fileExistsResult = await checkFileExists({
+          filePath,
+        });
+        
+        // Step 2: If file doesn't exist in the vector store, embed it
+        if (!fileExistsResult.exists) {
+          console.log(`File ${filePath} not found in vector store. Embedding now...`);
+          
+          // Determine language from file extension
+          const ext = path.extname(filePath).toLowerCase();
+          const languageMap = {
+            '.js': 'js',
+            '.jsx': 'js',
+            '.ts': 'js',
+            '.tsx': 'js',
+            '.html': 'html',
+            '.css': 'html',
+            '.json': 'js',
+            '.md': 'markdown',
+            '.py': 'python',
+            '.java': 'java',
+            '.cpp': 'cpp',
+            '.go': 'go',
+            '.rs': 'rust',
+            '.rb': 'ruby',
+            '.php': 'php',
+            '.sol': 'sol',
+          };
+          
+          const language = languageMap[ext] || 'js';
+          
+          // Embed the file
+          const embedResult = await embedFile({
+            filePath,
+            language,
+          });
+          
+          if (!embedResult.success) {
+            throw new Error(`Failed to embed file: ${embedResult.error}`);
+          }
+          
+          console.log(`Successfully embedded file with ${embedResult.chunksCount} chunks`);
+        }
+        
+        // Step 3: Generate RAG response using the file path for filtering
+        const ragResponse = await generateRagResponse({
+          query: message.content,
+          filePath,
+        });
+        
+        // Send response back to renderer
+        event.sender.send('chat:response', ragResponse.response);
+        return;
+      }
+      
+      // If no file context, use the regular chat model
+      const model = new ChatGroq({ 
+        model: "llama3-8b-8192",
+        temperature: 0.7,
+        maxTokens: 1000,
+        apiKey: GROQ_API_KEY
+      });
+      
+      // For regular flow, just use the message directly without any file context
+      console.log("Sending to model:", message);
+      const response = await model.invoke([message]);
+      
+      console.log("response============================================");
+      event.sender.send('chat:response', response.content);
+      console.log("response.content", response.content);
+      console.log("sent response============================================");
+      
+    } catch (error) {
+      console.error('Error in chat:send:', error);
+      event.sender.send('chat:response', `Error: ${error.message}`);
+    }
+  });
   
   // Get file/directory stats
   ipcMain.handle('file:getStats', async (event, filePath) => {
@@ -427,64 +516,6 @@ app.whenReady().then(() => {
     } catch (error) {
       console.error('Error saving expanded directories:', error);
       return false;
-    }
-  });
-
-  // ipcMain.on('chat:stream', async (event, messages) => {
-  //   try {
-  //     await streamChat(messages, (token) => {
-  //       event.sender.send('chat:token', token);
-  //     })
-  //     event.sender.send('chat:done');
-  //   } catch (error) {
-  //     console.error('Error streaming chat:', error);
-  //     event.sender.send('chat:error', error.message);
-  //   }
-  // });
-  
-  
-  
-
-  
-  ipcMain.on('chat:send', async (event, payload) => {
-    try {
-      console.log("Received chat request in main process:", payload);
-      
-      // Create a ChatGroq instance with the correct configuration
-      const model = new ChatGroq({ 
-        model: "llama3-8b-8192",
-        temperature: 0.7,
-        maxTokens: 1000,
-        apiKey: GROQ_API_KEY
-      });
-      
-      // Extract the message and file context from the payload
-      const { message, fileContext } = payload;
-      
-      // In a real implementation, you would fetch previous messages from a database/storage here
-      // For now, we'll just create an array with the context (if provided) and the current message
-      const messagesForModel = [];
-      
-      // Add file context if available
-      if (fileContext) {
-        messagesForModel.push(fileContext);
-      }
-      
-      // Add the current message
-      messagesForModel.push(message);
-      
-      console.log("Sending to model:", messagesForModel);
-      const response = await model.invoke(messagesForModel);
-      
-      console.log("response============================================");
-      event.sender.send('chat:response', response.content);
-      console.log("response.content", response.content);
-      console.log("sent response============================================");
-      
-      // TODO: In the future, you would store both the message and response in your backend storage
-    } catch (error) {
-      console.error('Error in chat:send:', error);
-      event.sender.send('chat:response', `Error: ${error.message}`);
     }
   });
 
