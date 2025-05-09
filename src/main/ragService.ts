@@ -68,10 +68,31 @@ const jinaEmbeddingFunction = {
   },
 };
 
-const collection = await chroma.createCollection({
-  name: "vector-store",
-  embeddingFunction: jinaEmbeddingFunction,
-});
+// Replace the direct creation with a get-or-create pattern
+let collection: any;
+try {
+  // Try to get the existing collection first
+  collection = await chroma.getCollection({
+    name: "vector-store",
+    embeddingFunction: jinaEmbeddingFunction,
+  });
+  console.log("Using existing collection: vector-store");
+} catch (error: any) {
+  // Check if the error is specifically that the collection doesn't exist
+  if (error.message && error.message.includes("Collection not found")) {
+    // If collection doesn't exist, create it
+    console.log("Collection not found, creating new one: vector-store");
+    collection = await chroma.createCollection({
+      name: "vector-store",
+      embeddingFunction: jinaEmbeddingFunction,
+    });
+    console.log("Created new collection: vector-store");
+  } else {
+    // Re-throw other errors for proper handling upstream
+    console.error("Error accessing ChromaDB:", error);
+    throw error;
+  }
+}
 
 /**
  * Checks if a file exists in the vector store
@@ -84,16 +105,21 @@ export async function checkFileExists({
   userId?: string;
 }) {
   try {
+    // Create where condition using the suggested format
+    const whereCondition = {
+      $and: [
+        { userId: userId },
+        { source: filePath }
+      ]
+    };
+    
     // Query the collection with a filter for the file path
     const results = await collection.query({
       queryTexts: [""],  // Empty query to match based on filters only
       nResults: 1,
-      where: {
-        userId,
-        source: filePath,
-      },
+      where: whereCondition,
     });
-    console.log("results", results);
+    
     return {
       success: true,
       exists: results.ids[0]?.length > 0,
@@ -198,22 +224,32 @@ export async function queryVectorStore({
   filters?: Record<string, any>;
 }) {
   try {
-    // Prepare filter with user ID by default
-    const userFilter = {
-      userId,
-      ...filters,
+    // Build conditions array for the $and operator
+    const conditions: Record<string, any>[] = [{ userId: userId }];
+    
+    // Add other filters
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && key !== 'userId') { // Avoid duplicating userId
+        conditions.push({ [key]: value });
+      }
+    }
+    
+    // Log the where clause for debugging
+    const whereClause = { $and: conditions };
+    console.log('ChromaDB where clause:', JSON.stringify(whereClause, null, 2));
+
+    let queryOptions: any = {
+      queryTexts: [query],
+      nResults: limit,
+      where: whereClause
     };
 
     // Query the collection with the embedded query
-    const results = await collection.query({
-      queryTexts: [query],
-      nResults: limit,
-      where: Object.keys(userFilter).length > 0 ? userFilter : undefined,
-    });
+    const results = await collection.query(queryOptions);
 
     // Format the results
     const formattedResults =
-      results.documents[0]?.map((document, index) => {
+      results.documents[0]?.map((document: string, index: number) => {
         return {
           content: document,
           metadata: results.metadatas[0]?.[index] || {},
@@ -260,11 +296,17 @@ export async function generateRagResponse({
 }) {
   try {
     // First, retrieve relevant chunks
+    const filters: Record<string, any> = {};
+    
+    // Only add valid filters
+    if (userId) filters.userId = userId;
+    if (filePath) filters.source = filePath;
+    
     const retrievalResult = await queryVectorStore({
       query,
       userId,
       limit: chunkLimit,
-      filters: filePath ? { source: filePath } : {},
+      filters,
     });
 
     if (!retrievalResult.success) {
@@ -281,7 +323,7 @@ export async function generateRagResponse({
     // Prepare the context from retrieved chunks
     const context = retrievalResult.results
       .map(
-        (result) =>
+        (result: { metadata: { source?: string }, content: string }) =>
           `CHUNK (from ${result.metadata.source || "unknown source"}):\n${
             result.content
           }`
@@ -318,7 +360,7 @@ Provide a clear, accurate response based on the code context. If the context doe
       success: true,
       response,
       sourcesCount: retrievalResult.results.length,
-      sources: retrievalResult.results.map((r) => ({
+      sources: retrievalResult.results.map((r: { id: string, metadata: { source: string }, score: number }) => ({
         id: r.id,
         source: r.metadata.source,
         score: r.score,

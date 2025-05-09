@@ -1,17 +1,23 @@
-const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
+import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
+import 'dotenv/config';
+import * as path from 'node:path';
+import * as fs from 'fs';
+import Store from 'electron-store';
+import * as crypto from 'crypto';
+import { ChatGroq } from "@langchain/groq";
+import { checkFileExists, embedFile, generateRagResponse } from './ragService';
 
-require('dotenv').config();
+// Declare types for webpack constants
+declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
+
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const path = require('node:path');
-const fs = require('fs');
-const Store = require('electron-store');
-const crypto = require('crypto');
-const { ChatGroq } = require("@langchain/groq");
-const { checkFileExists, embedFile, generateRagResponse } = require('./ragService');
-;
+
+// Import specific Store types
+import { Schema } from 'electron-store';
 
 // Define schema for electron-store
-const schema = {
+const schema: Schema<any> = {
   recentProjects: {
     type: 'array',
     items: {
@@ -44,7 +50,7 @@ const schema = {
 const store = new Store({ schema });
 
 // Read directory contents recursively
-const readDirectoryRecursive = async (dirPath) => {
+const readDirectoryRecursive = async (dirPath: string): Promise<any> => {
   try {
     const stats = await fs.promises.stat(dirPath);
     if (!stats.isDirectory()) {
@@ -52,8 +58,8 @@ const readDirectoryRecursive = async (dirPath) => {
     }
 
     const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
-    const children = await Promise.all(
-      items.map(async item => {
+    const children: any[] = await Promise.all(
+      items.map(async (item: any) => {
         const fullPath = path.join(dirPath, item.name);
         const stats = await fs.promises.stat(fullPath);
         
@@ -71,7 +77,7 @@ const readDirectoryRecursive = async (dirPath) => {
     );
 
     // Sort directories first, then files, both alphabetically
-    children.sort((a, b) => {
+    children.sort((a: any, b: any) => {
       if (a.type === b.type) {
         return a.name.localeCompare(b.name);
       }
@@ -105,9 +111,9 @@ const generateNonce = () => {
 const windowNonces = new Map();
 
 // Helper function to determine file language based on extension
-const getLanguageFromPath = (filePath) => {
+const getLanguageFromPath = (filePath: string) => {
   const ext = path.extname(filePath).toLowerCase();
-  const languageMap = {
+  const languageMap: Record<string, string> = {
     '.js': 'javascript',
     '.jsx': 'javascript',
     '.ts': 'typescript',
@@ -134,12 +140,12 @@ const getLanguageFromPath = (filePath) => {
 };
 
 // Helper function to add a project to recent projects
-const addToRecentProjects = (projectPath) => {
+const addToRecentProjects = (projectPath: string) => {
   const projectName = path.basename(projectPath);
   const recentProjects = store.get('recentProjects') || [];
   
   // Remove if already exists
-  const filteredProjects = recentProjects.filter(p => p.path !== projectPath);
+  const filteredProjects = recentProjects.filter((p: any) => p.path !== projectPath);
   
   // Add to front of array
   filteredProjects.unshift({
@@ -194,7 +200,7 @@ const createWindow = () => {
   const isDevelopment = !forceProduction && (process.env.NODE_ENV === 'development' || !app.isPackaged);
 
   // Set Content Security Policy with environment-specific settings
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+  session.defaultSession.webRequest.onHeadersReceived((details: any, callback: any) => {
     // Only apply CSP to our app's pages
     if (details.url.indexOf(MAIN_WINDOW_WEBPACK_ENTRY) !== -1) {
       let csp;
@@ -256,7 +262,7 @@ const createWindow = () => {
   mainWindow.webContents.openDevTools();
   
   // Expose nonces to the preload script
-  ipcMain.handle('get-csp-nonces', (event) => {
+  ipcMain.handle('get-csp-nonces', (event: any) => {
     // Verify the sender to ensure security
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && windowNonces.has(win.id)) {
@@ -286,7 +292,7 @@ const createWindow = () => {
 
 
 // Read directory contents
-ipcMain.handle('directory:read', async (event, dirPath) => {
+ipcMain.handle('directory:read', async (event: any, dirPath: string) => {
   try {
     return await readDirectoryRecursive(dirPath);
   } catch (error) {
@@ -354,7 +360,7 @@ app.whenReady().then(() => {
   });
   
   // Read file contents
-  ipcMain.handle('file:read', async (event, filePath) => {
+  ipcMain.handle('file:read', async (event: any, filePath: string) => {
     try {
       console.log('Reading file:', filePath);
       if (!fs.existsSync(filePath)) {
@@ -370,14 +376,15 @@ app.whenReady().then(() => {
       const language = getLanguageFromPath(filePath);
       console.log('File read successfully, language:', language);
       return { content, language };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error reading file:', error);
-      return { content: `Error reading file: ${error.message}`, language: 'plaintext' };
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return { content: `Error reading file: ${errorMessage}`, language: 'plaintext' };
     }
   });
   
   // Save file
-  ipcMain.handle('file:save', async (event, filePath, content) => {
+  ipcMain.handle('file:save', async (event: any, filePath: string, content: string) => {
     try {
       fs.writeFileSync(filePath, content, 'utf-8');
       return true;
@@ -394,7 +401,7 @@ app.whenReady().then(() => {
   
   
   // Handle RAG queries
-  ipcMain.on('chat:send', async (event, payload) => {
+  ipcMain.on('chat:send', async (event: any, payload: any) => {
     try {
       console.log("Received chat request in main process:", payload);
       
@@ -416,7 +423,11 @@ app.whenReady().then(() => {
           
           // Determine language from file extension
           const ext = path.extname(filePath).toLowerCase();
-          const languageMap = {
+          
+          // Define allowed language values for the embeddings
+          type SupportedLanguage = 'js' | 'html' | 'markdown' | 'python' | 'java' | 'cpp' | 'go' | 'rust' | 'ruby' | 'php' | 'sol';
+          
+          const languageMap: Record<string, SupportedLanguage> = {
             '.js': 'js',
             '.jsx': 'js',
             '.ts': 'js',
@@ -478,14 +489,15 @@ app.whenReady().then(() => {
       console.log("response.content", response.content);
       console.log("sent response============================================");
       
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error in chat:send:', error);
-      event.sender.send('chat:response', `Error: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      event.sender.send('chat:response', `Error: ${errorMessage}`);
     }
   });
   
   // Get file/directory stats
-  ipcMain.handle('file:getStats', async (event, filePath) => {
+  ipcMain.handle('file:getStats', async (event: any, filePath: string) => {
     try {
       const stats = fs.statSync(filePath);
       return {
@@ -498,7 +510,7 @@ app.whenReady().then(() => {
   });
   
   // Get expanded directories for a root path
-  ipcMain.handle('directory:getExpandedDirs', async (event, rootPath) => {
+  ipcMain.handle('directory:getExpandedDirs', async (event: any, rootPath: string) => {
     try {
       const expandedDirs = store.get(`expandedDirs.${rootPath}`) || [];
       return expandedDirs;
@@ -509,7 +521,7 @@ app.whenReady().then(() => {
   });
 
   // Save expanded directories for a root path
-  ipcMain.handle('directory:saveExpandedDirs', async (event, rootPath, expandedDirs) => {
+  ipcMain.handle('directory:saveExpandedDirs', async (event: any, rootPath: string, expandedDirs: string[]) => {
     try {
       store.set(`expandedDirs.${rootPath}`, expandedDirs);
       return true;
