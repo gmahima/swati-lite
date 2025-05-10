@@ -6,8 +6,8 @@ import Store from 'electron-store';
 import * as crypto from 'crypto';
 import { ChatGroq } from "@langchain/groq";
 import { checkFileExists, embedFile, generateRagResponse } from './ragService';
-// Import the file handlers - they'll register themselves with ipcMain when imported
-import './fileEventHandlers';
+// Import the file watcher service which now contains all file handlers
+import { fileWatcherService } from './fileWatcher';
 
 // Declare types for webpack constants
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
