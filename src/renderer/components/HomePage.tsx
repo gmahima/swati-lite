@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@ui/button';
+import {Button} from "@/renderer/components/ui/button";
 
 interface RecentProject {
   path: string;
