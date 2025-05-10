@@ -6,6 +6,8 @@ import Store from 'electron-store';
 import * as crypto from 'crypto';
 import { ChatGroq } from "@langchain/groq";
 import { checkFileExists, embedFile, generateRagResponse } from './ragService';
+// Import the file handlers - they'll register themselves with ipcMain when imported
+import './fileEventHandlers';
 
 // Declare types for webpack constants
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -14,7 +16,7 @@ declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 // Import specific Store types
-import { Schema } from 'electron-store';
+import {Schema} from "electron-store";
 
 // Define schema for electron-store
 const schema: Schema<any> = {
@@ -306,236 +308,209 @@ ipcMain.handle('directory:read', async (event: any, dirPath: string) => {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   // Set up IPC handlers for file operations
-  
+
   // Get workspace root
-  ipcMain.handle('app:getWorkspaceRoot', () => {
-    const root = store.get('workspaceRoot');
-    console.log('Getting workspace root from store:', root);
-    console.log('Store contents:', store.store);
-    return root || '';
+  ipcMain.handle("app:getWorkspaceRoot", () => {
+    const root = store.get("workspaceRoot");
+    console.log("Getting workspace root from store:", root);
+    console.log("Store contents:", store.store);
+    return root || "";
   });
-  
+
   // Open folder dialog
-  ipcMain.handle('dialog:openFolder', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      properties: ['openDirectory']
+  ipcMain.handle("dialog:openFolder", async () => {
+    const {canceled, filePaths} = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
     });
-    
+
     if (!canceled && filePaths.length > 0) {
       const folderPath = filePaths[0];
-      console.log('About to save workspace root:', folderPath);
+      console.log("About to save workspace root:", folderPath);
       // Save the workspace root
-      store.set('workspaceRoot', folderPath);
-      console.log('Workspace root saved. Current store contents:', store.store);
-      console.log('Verifying saved workspace root:', store.get('workspaceRoot'));
+      store.set("workspaceRoot", folderPath);
+      console.log("Workspace root saved. Current store contents:", store.store);
+      console.log(
+        "Verifying saved workspace root:",
+        store.get("workspaceRoot")
+      );
       addToRecentProjects(folderPath);
       return {
         path: folderPath,
-        name: path.basename(folderPath)
+        name: path.basename(folderPath),
       };
     }
-    
+
     return null;
   });
-  
+
   // Open file dialog
-  ipcMain.handle('dialog:openFile', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [
-        { name: 'All Files', extensions: ['*'] }
-      ]
+  ipcMain.handle("dialog:openFile", async () => {
+    const {canceled, filePaths} = await dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{name: "All Files", extensions: ["*"]}],
     });
-    
+
     if (!canceled && filePaths.length > 0) {
       const filePath = filePaths[0];
       addToRecentProjects(filePath);
       return {
         path: filePath,
-        name: path.basename(filePath)
+        name: path.basename(filePath),
       };
     }
-    
+
     return null;
   });
-  
-  // Read file contents
-  ipcMain.handle('file:read', async (event: any, filePath: string) => {
-    try {
-      console.log('Reading file:', filePath);
-      if (!fs.existsSync(filePath)) {
-        console.error('File does not exist:', filePath);
-        return { content: `Error: File does not exist: ${filePath}`, language: 'plaintext' };
-      }
-      const stats = fs.statSync(filePath);
-      if (stats.isDirectory()) {
-        console.log('Path is a directory, not a file:', filePath);
-        return { content: `Selected path is a directory: ${filePath}`, language: 'plaintext' };
-      }
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const language = getLanguageFromPath(filePath);
-      console.log('File read successfully, language:', language);
-      return { content, language };
-    } catch (error: unknown) {
-      console.error('Error reading file:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return { content: `Error reading file: ${errorMessage}`, language: 'plaintext' };
-    }
-  });
-  
-  // Save file
-  ipcMain.handle('file:save', async (event: any, filePath: string, content: string) => {
-    try {
-      fs.writeFileSync(filePath, content, 'utf-8');
-      return true;
-    } catch (error) {
-      console.error('Error saving file:', error);
-      return false;
-    }
-  });
-  
+
   // Get recent projects
-  ipcMain.handle('app:getRecentProjects', () => {
-    return store.get('recentProjects') || [];
+  ipcMain.handle("app:getRecentProjects", () => {
+    return store.get("recentProjects") || [];
   });
-  
-  
+
   // Handle RAG queries
-  ipcMain.on('chat:send', async (event: any, payload: any) => {
+  ipcMain.on("chat:send", async (event: any, payload: any) => {
     try {
       console.log("Received chat request in main process:", payload);
-      
-      const { message, fileContext } = payload;
-      
+
+      const {message, fileContext} = payload;
+
       // Check if we have file context with a file path, use RAG if available
       if (fileContext && fileContext.filePath) {
         const filePath = fileContext.filePath;
         console.log(`Using RAG for file ${filePath}`);
-        
+
         // Step 1: Check if the file already exists in the vector store
         const fileExistsResult = await checkFileExists({
           filePath,
         });
-        
+
         // Step 2: If file doesn't exist in the vector store, embed it
         if (!fileExistsResult.exists) {
-          console.log(`File ${filePath} not found in vector store. Embedding now...`);
-          
+          console.log(
+            `File ${filePath} not found in vector store. Embedding now...`
+          );
+
           // Determine language from file extension
           const ext = path.extname(filePath).toLowerCase();
-          
+
           // Define allowed language values for the embeddings
-          type SupportedLanguage = 'js' | 'html' | 'markdown' | 'python' | 'java' | 'cpp' | 'go' | 'rust' | 'ruby' | 'php' | 'sol';
-          
+          type SupportedLanguage =
+            | "js"
+            | "html"
+            | "markdown"
+            | "python"
+            | "java"
+            | "cpp"
+            | "go"
+            | "rust"
+            | "ruby"
+            | "php"
+            | "sol";
+
           const languageMap: Record<string, SupportedLanguage> = {
-            '.js': 'js',
-            '.jsx': 'js',
-            '.ts': 'js',
-            '.tsx': 'js',
-            '.html': 'html',
-            '.css': 'html',
-            '.json': 'js',
-            '.md': 'markdown',
-            '.py': 'python',
-            '.java': 'java',
-            '.cpp': 'cpp',
-            '.go': 'go',
-            '.rs': 'rust',
-            '.rb': 'ruby',
-            '.php': 'php',
-            '.sol': 'sol',
+            ".js": "js",
+            ".jsx": "js",
+            ".ts": "js",
+            ".tsx": "js",
+            ".html": "html",
+            ".css": "html",
+            ".json": "js",
+            ".md": "markdown",
+            ".py": "python",
+            ".java": "java",
+            ".cpp": "cpp",
+            ".go": "go",
+            ".rs": "rust",
+            ".rb": "ruby",
+            ".php": "php",
+            ".sol": "sol",
           };
-          
-          const language = languageMap[ext] || 'js';
-          
+
+          const language = languageMap[ext] || "js";
+
           // Embed the file
           const embedResult = await embedFile({
             filePath,
             language,
           });
-          
+
           if (!embedResult.success) {
             throw new Error(`Failed to embed file: ${embedResult.error}`);
           }
-          
-          console.log(`Successfully embedded file with ${embedResult.chunksCount} chunks`);
+
+          console.log(
+            `Successfully embedded file with ${embedResult.chunksCount} chunks`
+          );
         }
-        
+
         // Step 3: Generate RAG response using the file path for filtering
         const ragResponse = await generateRagResponse({
           query: message.content,
           filePath,
         });
-        
+
         // Send response back to renderer
-        event.sender.send('chat:response', ragResponse.response);
+        event.sender.send("chat:response", ragResponse.response);
         return;
       }
-      
+
       // If no file context, use the regular chat model
-      const model = new ChatGroq({ 
+      const model = new ChatGroq({
         model: "llama3-8b-8192",
         temperature: 0.7,
         maxTokens: 1000,
-        apiKey: GROQ_API_KEY
+        apiKey: GROQ_API_KEY,
       });
-      
+
       // For regular flow, just use the message directly without any file context
       console.log("Sending to model:", message);
       const response = await model.invoke([message]);
-      
+
       console.log("response============================================");
-      event.sender.send('chat:response', response.content);
+      event.sender.send("chat:response", response.content);
       console.log("response.content", response.content);
       console.log("sent response============================================");
-      
     } catch (error: unknown) {
-      console.error('Error in chat:send:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      event.sender.send('chat:response', `Error: ${errorMessage}`);
-    }
-  });
-  
-  // Get file/directory stats
-  ipcMain.handle('file:getStats', async (event: any, filePath: string) => {
-    try {
-      const stats = fs.statSync(filePath);
-      return {
-        isDirectory: stats.isDirectory()
-      };
-    } catch (error) {
-      console.error('Error getting file stats:', error);
-      throw error;
-    }
-  });
-  
-  // Get expanded directories for a root path
-  ipcMain.handle('directory:getExpandedDirs', async (event: any, rootPath: string) => {
-    try {
-      const expandedDirs = store.get(`expandedDirs.${rootPath}`) || [];
-      return expandedDirs;
-    } catch (error) {
-      console.error('Error getting expanded directories:', error);
-      return [];
+      console.error("Error in chat:send:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      event.sender.send("chat:response", `Error: ${errorMessage}`);
     }
   });
 
-  // Save expanded directories for a root path
-  ipcMain.handle('directory:saveExpandedDirs', async (event: any, rootPath: string, expandedDirs: string[]) => {
-    try {
-      store.set(`expandedDirs.${rootPath}`, expandedDirs);
-      return true;
-    } catch (error) {
-      console.error('Error saving expanded directories:', error);
-      return false;
+  // Get expanded directories for a root path
+  ipcMain.handle(
+    "directory:getExpandedDirs",
+    async (event: any, rootPath: string) => {
+      try {
+        const expandedDirs = store.get(`expandedDirs.${rootPath}`) || [];
+        return expandedDirs;
+      } catch (error) {
+        console.error("Error getting expanded directories:", error);
+        return [];
+      }
     }
-  });
+  );
+
+  // Save expanded directories for a root path
+  ipcMain.handle(
+    "directory:saveExpandedDirs",
+    async (event: any, rootPath: string, expandedDirs: string[]) => {
+      try {
+        store.set(`expandedDirs.${rootPath}`, expandedDirs);
+        return true;
+      } catch (error) {
+        console.error("Error saving expanded directories:", error);
+        return false;
+      }
+    }
+  );
 
   createWindow();
 
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
-  app.on('activate', () => {
+  app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
