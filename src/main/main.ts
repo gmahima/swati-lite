@@ -5,9 +5,16 @@ import * as fs from 'fs';
 import Store from 'electron-store';
 import * as crypto from 'crypto';
 import { ChatGroq } from "@langchain/groq";
-import { checkFileExists, embedFile, generateRagResponse } from './ragService';
+import {
+  checkFileExists,
+  embedFile,
+  generateRagResponse,
+  handleFileChange,
+} from "./ragService";
 // Import the file watcher service which now contains all file handlers
-import { fileWatcherService } from './fileWatcher';
+import {FileChangeType, fileWatcherService} from "./fileWatcher";
+// Import the file watcher embedding service for automatic RAG indexing
+import {fileWatcherEmbeddingService} from "./fileWatcherEmbeddingService";
 
 // Declare types for webpack constants
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -21,50 +28,50 @@ import {Schema} from "electron-store";
 // Define schema for electron-store
 const schema: Schema<any> = {
   recentProjects: {
-    type: 'array',
+    type: "array",
     items: {
-      type: 'object',
+      type: "object",
       properties: {
-        path: { type: 'string' },
-        name: { type: 'string' },
-        lastOpened: { type: 'number' }
+        path: {type: "string"},
+        name: {type: "string"},
+        lastOpened: {type: "number"},
       },
-      required: ['path', 'name', 'lastOpened']
+      required: ["path", "name", "lastOpened"],
     },
-    default: []
+    default: [],
   },
   expandedDirs: {
-    type: 'object',
+    type: "object",
     additionalProperties: {
-      type: 'array',
-      items: { type: 'string' },
-      default: []
+      type: "array",
+      items: {type: "string"},
+      default: [],
     },
-    default: {}
+    default: {},
   },
   workspaceRoot: {
-    type: 'string',
-    default: ''
-  }
+    type: "string",
+    default: "",
+  },
 };
 
 // Initialize electron-store with schema
-const store = new Store({ schema });
+const store = new Store({schema});
 
 // Read directory contents recursively
 const readDirectoryRecursive = async (dirPath: string): Promise<any> => {
   try {
     const stats = await fs.promises.stat(dirPath);
     if (!stats.isDirectory()) {
-      throw new Error('Path is not a directory');
+      throw new Error("Path is not a directory");
     }
 
-    const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    const items = await fs.promises.readdir(dirPath, {withFileTypes: true});
     const children: any[] = await Promise.all(
       items.map(async (item: any) => {
         const fullPath = path.join(dirPath, item.name);
         const stats = await fs.promises.stat(fullPath);
-        
+
         if (stats.isDirectory()) {
           // Recursively read subdirectories
           return readDirectoryRecursive(fullPath);
@@ -72,7 +79,7 @@ const readDirectoryRecursive = async (dirPath: string): Promise<any> => {
           return {
             name: item.name,
             path: fullPath,
-            type: 'file'
+            type: "file",
           };
         }
       })
@@ -83,14 +90,14 @@ const readDirectoryRecursive = async (dirPath: string): Promise<any> => {
       if (a.type === b.type) {
         return a.name.localeCompare(b.name);
       }
-      return a.type === 'directory' ? -1 : 1;
+      return a.type === "directory" ? -1 : 1;
     });
 
     return {
       name: path.basename(dirPath),
       path: dirPath,
-      type: 'directory',
-      children
+      type: "directory",
+      children,
     };
   } catch (error) {
     console.error(`Error reading directory ${dirPath}:`, error);
@@ -99,14 +106,14 @@ const readDirectoryRecursive = async (dirPath: string): Promise<any> => {
 };
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
+if (require("electron-squirrel-startup")) {
   app.quit();
 }
 
 // Helper function to generate a secure nonce for CSP
 // This creates a truly random nonce every time it's called
 const generateNonce = () => {
-  return crypto.randomBytes(32).toString('base64'); // Increased from 16 to 32 bytes for extra security
+  return crypto.randomBytes(32).toString("base64"); // Increased from 16 to 32 bytes for extra security
 };
 
 // Store for window-specific nonces
@@ -116,50 +123,52 @@ const windowNonces = new Map();
 const getLanguageFromPath = (filePath: string) => {
   const ext = path.extname(filePath).toLowerCase();
   const languageMap: Record<string, string> = {
-    '.js': 'javascript',
-    '.jsx': 'javascript',
-    '.ts': 'typescript',
-    '.tsx': 'typescript',
-    '.html': 'html',
-    '.css': 'css',
-    '.json': 'json',
-    '.md': 'markdown',
-    '.py': 'python',
-    '.java': 'java',
-    '.c': 'c',
-    '.cpp': 'cpp',
-    '.go': 'go',
-    '.rs': 'rust',
-    '.rb': 'ruby',
-    '.php': 'php',
-    '.sh': 'shell',
-    '.yaml': 'yaml',
-    '.yml': 'yaml',
-    '.xml': 'xml',
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".html": "html",
+    ".css": "css",
+    ".json": "json",
+    ".md": "markdown",
+    ".py": "python",
+    ".java": "java",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".php": "php",
+    ".sh": "shell",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".xml": "xml",
   };
-  
-  return languageMap[ext] || 'plaintext';
+
+  return languageMap[ext] || "plaintext";
 };
 
 // Helper function to add a project to recent projects
 const addToRecentProjects = (projectPath: string) => {
   const projectName = path.basename(projectPath);
-  const recentProjects = store.get('recentProjects') || [];
-  
+  const recentProjects = store.get("recentProjects") || [];
+
   // Remove if already exists
-  const filteredProjects = recentProjects.filter((p: any) => p.path !== projectPath);
-  
+  const filteredProjects = recentProjects.filter(
+    (p: any) => p.path !== projectPath
+  );
+
   // Add to front of array
   filteredProjects.unshift({
     path: projectPath,
     name: projectName,
-    lastOpened: Date.now()
+    lastOpened: Date.now(),
   });
-  
+
   // Limit to 10 recent projects
   const limitedProjects = filteredProjects.slice(0, 10);
-  
-  store.set('recentProjects', limitedProjects);
+
+  store.set("recentProjects", limitedProjects);
   return limitedProjects;
 };
 
@@ -167,7 +176,7 @@ const createWindow = () => {
   // Generate unique secure nonces for this window session
   const scriptNonce = generateNonce();
   const styleNonce = generateNonce();
-  
+
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -181,13 +190,13 @@ const createWindow = () => {
       allowRunningInsecureContent: false,
     },
   });
-  
+
   // Store nonces for this window instance
   windowNonces.set(mainWindow.id, {
     scriptNonce,
-    styleNonce
+    styleNonce,
   });
-  
+
   // Make nonces available to the preload script
   mainWindow.webContents.executeJavaScript(`
     window.cspNoncesValues = {
@@ -195,76 +204,82 @@ const createWindow = () => {
       styleNonce: "${styleNonce}"
     };
   `);
-  
+
   // Determine if we're in development or production
   // Allow forcing production mode via command line argument for testing
-  const forceProduction = process.argv.includes('--force-production-csp');
-  const isDevelopment = !forceProduction && (process.env.NODE_ENV === 'development' || !app.isPackaged);
+  const forceProduction = process.argv.includes("--force-production-csp");
+  const isDevelopment =
+    !forceProduction &&
+    (process.env.NODE_ENV === "development" || !app.isPackaged);
 
   // Set Content Security Policy with environment-specific settings
-  session.defaultSession.webRequest.onHeadersReceived((details: any, callback: any) => {
-    // Only apply CSP to our app's pages
-    if (details.url.indexOf(MAIN_WINDOW_WEBPACK_ENTRY) !== -1) {
-      let csp;
-      
-      if (isDevelopment) {
-        // Relaxed CSP for development
-        csp = [
-          // Allow scripts from self, jsdelivr CDN, and with unsafe-inline/unsafe-eval
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net;",
-          // Allow workers from blob (needed by Monaco)
-          "worker-src 'self' blob:;",
-          // Allow styles from self, jsdelivr CDN, and with unsafe-inline
-          "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;",
-          // Other defaults
-          "font-src 'self' https://cdn.jsdelivr.net;",
-          "img-src 'self' data: https://cdn.jsdelivr.net;",
-          "default-src 'self'"
-        ].join(' ');
-        
-        console.log('Using development CSP with unsafe-inline and unsafe-eval');
-      } else {
-        // Strict CSP for production with nonces
-        csp = [
-          // Allow scripts from self and with correct nonce
-          `script-src 'self' 'nonce-${scriptNonce}';`,
-          // Allow workers from blob (needed by Monaco)
-          `worker-src 'self' blob:;`,
-          // Allow styles from self and with correct nonce
-          `style-src 'self' 'nonce-${styleNonce}';`,
-          // Other defaults
-          `font-src 'self';`,
-          `img-src 'self' data:;`,
-          `default-src 'self'`
-        ].join(' ');
-        
-        console.log('Using production CSP with nonces');
-      }
-      
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': [csp]
+  session.defaultSession.webRequest.onHeadersReceived(
+    (details: any, callback: any) => {
+      // Only apply CSP to our app's pages
+      if (details.url.indexOf(MAIN_WINDOW_WEBPACK_ENTRY) !== -1) {
+        let csp;
+
+        if (isDevelopment) {
+          // Relaxed CSP for development
+          csp = [
+            // Allow scripts from self, jsdelivr CDN, and with unsafe-inline/unsafe-eval
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net;",
+            // Allow workers from blob (needed by Monaco)
+            "worker-src 'self' blob:;",
+            // Allow styles from self, jsdelivr CDN, and with unsafe-inline
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;",
+            // Other defaults
+            "font-src 'self' https://cdn.jsdelivr.net;",
+            "img-src 'self' data: https://cdn.jsdelivr.net;",
+            "default-src 'self'",
+          ].join(" ");
+
+          console.log(
+            "Using development CSP with unsafe-inline and unsafe-eval"
+          );
+        } else {
+          // Strict CSP for production with nonces
+          csp = [
+            // Allow scripts from self and with correct nonce
+            `script-src 'self' 'nonce-${scriptNonce}';`,
+            // Allow workers from blob (needed by Monaco)
+            `worker-src 'self' blob:;`,
+            // Allow styles from self and with correct nonce
+            `style-src 'self' 'nonce-${styleNonce}';`,
+            // Other defaults
+            `font-src 'self';`,
+            `img-src 'self' data:;`,
+            `default-src 'self'`,
+          ].join(" ");
+
+          console.log("Using production CSP with nonces");
         }
-      });
-    } else {
-      callback({ responseHeaders: details.responseHeaders });
+
+        callback({
+          responseHeaders: {
+            ...details.responseHeaders,
+            "Content-Security-Policy": [csp],
+          },
+        });
+      } else {
+        callback({responseHeaders: details.responseHeaders});
+      }
     }
-  });
+  );
 
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
   // Clean up when window is closed
-  mainWindow.on('closed', () => {
+  mainWindow.on("closed", () => {
     windowNonces.delete(mainWindow.id);
   });
 
   // Open the DevTools during development to help debug issues
   mainWindow.webContents.openDevTools();
-  
+
   // Expose nonces to the preload script
-  ipcMain.handle('get-csp-nonces', (event: any) => {
+  ipcMain.handle("get-csp-nonces", (event: any) => {
     // Verify the sender to ensure security
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && windowNonces.has(win.id)) {
@@ -273,13 +288,10 @@ const createWindow = () => {
     // If we can't identify the window, generate new nonces
     return {
       scriptNonce: generateNonce(),
-      styleNonce: generateNonce()
+      styleNonce: generateNonce(),
     };
   });
 };
-
-
-
 
 // async function streamChat(messages, onToken) {
 //   const result = await streamText({
@@ -292,13 +304,12 @@ const createWindow = () => {
 //   }
 // }
 
-
 // Read directory contents
-ipcMain.handle('directory:read', async (event: any, dirPath: string) => {
+ipcMain.handle("directory:read", async (event: any, dirPath: string) => {
   try {
     return await readDirectoryRecursive(dirPath);
   } catch (error) {
-    console.error('Error reading directory:', error);
+    console.error("Error reading directory:", error);
     throw error;
   }
 });
@@ -333,6 +344,14 @@ app.whenReady().then(() => {
         "Verifying saved workspace root:",
         store.get("workspaceRoot")
       );
+
+      // Add the folder to the embedding service watch list
+      await fileWatcherEmbeddingService.watchPathForEmbedding(folderPath);
+      console.log(`Started watching ${folderPath} for RAG indexing`);
+
+      // Recursively scan and embed important files
+      await scanAndEmbedDirectory(folderPath);
+
       addToRecentProjects(folderPath);
       return {
         path: folderPath,
@@ -367,6 +386,50 @@ app.whenReady().then(() => {
     return store.get("recentProjects") || [];
   });
 
+  // Handle opening a recent project to ensure indexing
+  ipcMain.handle("app:openRecentProject", async (_, projectPath: string) => {
+    try {
+      // Verify path exists
+      const pathStats = await fs.promises.stat(projectPath);
+
+      if (pathStats.isDirectory()) {
+        // Add the folder to embedding service watch list
+        await fileWatcherEmbeddingService.watchPathForEmbedding(projectPath);
+        console.log(`Started watching ${projectPath} for RAG indexing`);
+
+        // Recursively scan and embed important files
+        await scanAndEmbedDirectory(projectPath);
+
+        // Update the workspace root
+        store.set("workspaceRoot", projectPath);
+
+        // Refresh recent projects
+        addToRecentProjects(projectPath);
+
+        return {
+          success: true,
+          path: projectPath,
+          name: path.basename(projectPath),
+        };
+      } else if (pathStats.isFile()) {
+        // Just add to recent projects, no need to index directory
+        addToRecentProjects(projectPath);
+
+        return {
+          success: true,
+          path: projectPath,
+          name: path.basename(projectPath),
+        };
+      }
+    } catch (error) {
+      console.error(`Error opening recent project ${projectPath}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
   // Handle RAG queries
   ipcMain.on("chat:send", async (event: any, payload: any) => {
     try {
@@ -379,71 +442,8 @@ app.whenReady().then(() => {
         const filePath = fileContext.filePath;
         console.log(`Using RAG for file ${filePath}`);
 
-        // Step 1: Check if the file already exists in the vector store
-        const fileExistsResult = await checkFileExists({
-          filePath,
-        });
-
-        // Step 2: If file doesn't exist in the vector store, embed it
-        if (!fileExistsResult.exists) {
-          console.log(
-            `File ${filePath} not found in vector store. Embedding now...`
-          );
-
-          // Determine language from file extension
-          const ext = path.extname(filePath).toLowerCase();
-
-          // Define allowed language values for the embeddings
-          type SupportedLanguage =
-            | "js"
-            | "html"
-            | "markdown"
-            | "python"
-            | "java"
-            | "cpp"
-            | "go"
-            | "rust"
-            | "ruby"
-            | "php"
-            | "sol";
-
-          const languageMap: Record<string, SupportedLanguage> = {
-            ".js": "js",
-            ".jsx": "js",
-            ".ts": "js",
-            ".tsx": "js",
-            ".html": "html",
-            ".css": "html",
-            ".json": "js",
-            ".md": "markdown",
-            ".py": "python",
-            ".java": "java",
-            ".cpp": "cpp",
-            ".go": "go",
-            ".rs": "rust",
-            ".rb": "ruby",
-            ".php": "php",
-            ".sol": "sol",
-          };
-
-          const language = languageMap[ext] || "js";
-
-          // Embed the file
-          const embedResult = await embedFile({
-            filePath,
-            language,
-          });
-
-          if (!embedResult.success) {
-            throw new Error(`Failed to embed file: ${embedResult.error}`);
-          }
-
-          console.log(
-            `Successfully embedded file with ${embedResult.chunksCount} chunks`
-          );
-        }
-
-        // Step 3: Generate RAG response using the file path for filtering
+        // Generate RAG response using the file path for filtering
+        // We don't need to trigger embedding here since the file watcher handles that
         const ragResponse = await generateRagResponse({
           query: message.content,
           filePath,
@@ -506,6 +506,42 @@ app.whenReady().then(() => {
     }
   );
 
+  // Explicit file indexing handler
+  ipcMain.handle("rag:indexFile", async (_, filePath) => {
+    // Check if file exists in the vector store
+    const fileExists = await checkFileExists({filePath});
+    if (fileExists.exists) {
+      return {success: true, message: "File already indexed"};
+    }
+
+    // Use the same file change handler that the watcher uses
+    // This ensures consistent behavior and takes advantage of
+    // the smart chunking and debouncing
+    return await handleFileChange({
+      filePath,
+      changeType: FileChangeType.ADDED,
+    });
+  });
+
+  // RAG query handler
+  ipcMain.handle("rag:query", async (_, query, filePath) => {
+    return await generateRagResponse({query, filePath});
+  });
+
+  // Toggle auto-indexing for a directory
+  ipcMain.handle("rag:toggleWatchPath", async (_, dirPath, shouldWatch) => {
+    if (shouldWatch) {
+      return await fileWatcherEmbeddingService.watchPathForEmbedding(dirPath);
+    } else {
+      return fileWatcherEmbeddingService.unwatchPathForEmbedding(dirPath);
+    }
+  });
+
+  // Get list of watched paths
+  ipcMain.handle("rag:getWatchedPaths", () => {
+    return fileWatcherEmbeddingService.getWatchedPaths();
+  });
+
   createWindow();
 
   // On OS X it's common to re-create a window in the app when the
@@ -520,11 +556,81 @@ app.whenReady().then(() => {
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
+
+// Helper function to recursively scan and embed important files in a directory
+async function scanAndEmbedDirectory(dirPath: string) {
+  try {
+    console.log(`Scanning directory for indexing: ${dirPath}`);
+
+    // Define file extensions we want to index
+    const importantExtensions = new Set([
+      ".js",
+      ".jsx",
+      ".ts",
+      ".tsx",
+      ".py",
+      ".java",
+      ".cpp",
+      ".c",
+      ".go",
+      ".rb",
+      ".rs",
+      ".php",
+      ".md",
+      ".html",
+      ".css",
+      ".json",
+    ]);
+
+    // Get all files in the directory
+    const entries = await fs.promises.readdir(dirPath, {withFileTypes: true});
+
+    // Process each entry
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+
+      if (entry.isDirectory()) {
+        // Skip node_modules and other common large directories
+        if (
+          entry.name === "node_modules" ||
+          entry.name === ".git" ||
+          entry.name === "dist" ||
+          entry.name === "build"
+        ) {
+          continue;
+        }
+
+        // Recursively scan subdirectories
+        await scanAndEmbedDirectory(fullPath);
+      } else if (entry.isFile()) {
+        // Check if the file has an important extension
+        const ext = path.extname(fullPath).toLowerCase();
+        if (importantExtensions.has(ext)) {
+          // Check if the file is already indexed
+          const fileExists = await checkFileExists({filePath: fullPath});
+
+          if (!fileExists.exists) {
+            console.log(`Embedding file: ${fullPath}`);
+            // Trigger embedding using our handleFileChange function
+            await handleFileChange({
+              filePath: fullPath,
+              changeType: FileChangeType.ADDED,
+            });
+          }
+        }
+      }
+    }
+
+    console.log(`Completed scanning directory: ${dirPath}`);
+  } catch (error) {
+    console.error(`Error scanning directory ${dirPath}:`, error);
+  }
+}

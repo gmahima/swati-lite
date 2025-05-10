@@ -1,15 +1,29 @@
 interface ElectronAPI {
-  openFolder: () => Promise<{ path: string } | null>;
-  openFile: () => Promise<{ path: string } | null>;
-  readFile: (path: string) => Promise<{ content: string; language: string }>;
+  openFolder: () => Promise<{path: string} | null>;
+  openFile: () => Promise<{path: string} | null>;
+  readFile: (path: string) => Promise<{content: string; language: string}>;
   saveFile: (path: string, content: string) => Promise<void>;
   getRecentProjects: () => Promise<any[]>;
-  getCspNonces: () => Promise<{ scriptNonce: string; styleNonce: string }>;
+  openRecentProject: (path: string) => Promise<{
+    success: boolean;
+    path?: string;
+    name?: string;
+    error?: string;
+  }>;
+  getCspNonces: () => Promise<{scriptNonce: string; styleNonce: string}>;
   readDirectory: (path: string) => Promise<any>;
   getStats: (path: string) => Promise<any>;
   getExpandedDirs: (rootPath: string) => Promise<string[]>;
   saveExpandedDirs: (rootPath: string, expandedDirs: string[]) => Promise<void>;
   getWorkspaceRoot: () => Promise<string>;
+  // RAG API methods
+  ragIndexFile: (filePath: string) => Promise<any>;
+  ragQuery: (query: string, filePath?: string) => Promise<any>;
+  ragToggleWatchPath: (
+    dirPath: string,
+    shouldWatch: boolean
+  ) => Promise<boolean>;
+  ragGetWatchedPaths: () => Promise<string[]>;
   ipcRenderer: {
     on: (channel: string, listener: Function) => void;
     once: (channel: string, listener: Function) => void;

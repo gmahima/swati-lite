@@ -6,24 +6,37 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Do NOT set sandbox options here - they should be in the main process BrowserWindow config
 
 // Expose the Electron API to the renderer process
-contextBridge.exposeInMainWorld('electronAPI', {
-  openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
-  openFile: () => ipcRenderer.invoke('dialog:openFile'),
-  readFile: (path) => ipcRenderer.invoke('file:read', path),
-  saveFile: (path, content) => ipcRenderer.invoke('file:save', path, content),
-  getRecentProjects: () => ipcRenderer.invoke('app:getRecentProjects'),
-  getCspNonces: () => ipcRenderer.invoke('get-csp-nonces'),
+contextBridge.exposeInMainWorld("electronAPI", {
+  openFolder: () => ipcRenderer.invoke("dialog:openFolder"),
+  openFile: () => ipcRenderer.invoke("dialog:openFile"),
+  readFile: (path) => ipcRenderer.invoke("file:read", path),
+  saveFile: (path, content) => ipcRenderer.invoke("file:save", path, content),
+  getRecentProjects: () => ipcRenderer.invoke("app:getRecentProjects"),
+  openRecentProject: (path) =>
+    ipcRenderer.invoke("app:openRecentProject", path),
+  getCspNonces: () => ipcRenderer.invoke("get-csp-nonces"),
   // chat: (messages) => ipcRenderer.invoke('chat:send', messages),
-  readDirectory: (path) => ipcRenderer.invoke('directory:read', path),
-  getStats: (path) => ipcRenderer.invoke('file:getStats', path),
-  getExpandedDirs: (rootPath) => ipcRenderer.invoke('directory:getExpandedDirs', rootPath),
-  saveExpandedDirs: (rootPath, expandedDirs) => ipcRenderer.invoke('directory:saveExpandedDirs', rootPath, expandedDirs),
-  getWorkspaceRoot: () => ipcRenderer.invoke('app:getWorkspaceRoot'),
+  readDirectory: (path) => ipcRenderer.invoke("directory:read", path),
+  getStats: (path) => ipcRenderer.invoke("file:getStats", path),
+  getExpandedDirs: (rootPath) =>
+    ipcRenderer.invoke("directory:getExpandedDirs", rootPath),
+  saveExpandedDirs: (rootPath, expandedDirs) =>
+    ipcRenderer.invoke("directory:saveExpandedDirs", rootPath, expandedDirs),
+  getWorkspaceRoot: () => ipcRenderer.invoke("app:getWorkspaceRoot"),
+  // RAG features
+  ragIndexFile: (filePath) => ipcRenderer.invoke("rag:indexFile", filePath),
+  ragQuery: (query, filePath) =>
+    ipcRenderer.invoke("rag:query", query, filePath),
+  ragToggleWatchPath: (dirPath, shouldWatch) =>
+    ipcRenderer.invoke("rag:toggleWatchPath", dirPath, shouldWatch),
+  ragGetWatchedPaths: () => ipcRenderer.invoke("rag:getWatchedPaths"),
+  // IPC for events
   ipcRenderer: {
     on: (channel, listener) => ipcRenderer.on(channel, listener),
     once: (channel, listener) => ipcRenderer.once(channel, listener),
     send: (channel, ...args) => ipcRenderer.send(channel, ...args),
-    removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),
+    removeListener: (channel, listener) =>
+      ipcRenderer.removeListener(channel, listener),
   },
 });
 

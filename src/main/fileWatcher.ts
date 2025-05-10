@@ -1,7 +1,8 @@
-import {app, ipcMain} from "electron";
+import {app, ipcMain, BrowserWindow} from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import * as chokidar from "chokidar";
+import {EventEmitter} from "events";
 
 export enum FileChangeType {
   ADDED = 1,
@@ -14,11 +15,12 @@ export interface FileChange {
   path: string;
 }
 
-class FileWatcherService {
+class FileWatcherService extends EventEmitter {
   private watchers = new Map<string, chokidar.FSWatcher>();
   private subscribers = new Map<string, Set<string>>();
 
   constructor() {
+    super();
     // Set up IPC handlers when service is created
     this.setupIPCHandlers();
   }
@@ -163,16 +165,6 @@ class FileWatcherService {
       }
     );
 
-    // Read directory contents recursively
-    ipcMain.handle("directory:read", async (_, dirPath: string) => {
-      try {
-        return await this.readDirectoryRecursive(dirPath);
-      } catch (error) {
-        console.error("Error reading directory:", error);
-        throw error;
-      }
-    });
-
     // List directory contents
     ipcMain.handle("file:list-directory", async (_, dirPath: string) => {
       try {
@@ -303,10 +295,14 @@ class FileWatcherService {
       path: filePath,
     };
 
+    // Emit the change event for our internal services
+    this.emit("file:change", change);
+
+    // Send to UI windows
     const subscribers = this.subscribers.get(dirPath);
     if (!subscribers) return;
     for (const subscriberId of subscribers) {
-      const windows = require("electron").BrowserWindow.getAllWindows();
+      const windows = BrowserWindow.getAllWindows();
       const window = windows.find(
         (window: Electron.BrowserWindow) =>
           window.webContents.id.toString() === subscriberId

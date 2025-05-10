@@ -59,13 +59,27 @@ const HomePage: React.FC = () => {
     }
   };
 
-  const handleOpenRecentProject = (path: string) => {
+  const handleOpenRecentProject = async (path: string) => {
     try {
       setError(null);
-      navigate(`/editor?path=${encodeURIComponent(path)}`);
+      setIsLoading(true);
+      // Use the new method that ensures embedding
+      const result = await window.electronAPI.openRecentProject(path);
+
+      if (result && result.success) {
+        navigate(`/editor?path=${encodeURIComponent(path)}`);
+      } else if (result && !result.success) {
+        setError(result.error || "Failed to open project");
+      }
     } catch (err) {
-      console.error('Error opening recent project:', err);
-      setError(`Failed to open recent project: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Error opening recent project:", err);
+      setError(
+        `Failed to open recent project: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 

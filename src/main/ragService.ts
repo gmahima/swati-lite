@@ -11,30 +11,11 @@ import {StringOutputParser} from "@langchain/core/output_parsers";
 import {RunnableSequence} from "@langchain/core/runnables";
 import {ChromaClient} from "chromadb";
 import fetch from "node-fetch";
-// Database connectivity
-// NOTE: You need to install this package: npm install @supabase/supabase-js
-// import {createClient} from "@supabase/supabase-js";
-
-// File system operations
 import * as path from "path";
 import * as os from "os";
 import {TEMPORARY_USER_ID} from "../lib/constants.ts";
+import {FileChangeType} from "./fileWatcher";
 require("dotenv").config();
-
-// const supabaseUrl = process.env.SUPABASE_URL as string;
-// const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
-
-// const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
-
-// const jina = new JinaEmbeddings({
-//     apiKey: process.env.JINA_API_KEY as string,
-//     model: "jina-embeddings-v3",
-//   });
-
-//   // Adapter to match Chroma's expected interface
-//   const embeddingFunction = {
-//     embed: (documents: string[]) => jina.embedDocuments(documents),
-//   };
 
 const chroma = new ChromaClient({path: "http://localhost:8000"});
 
@@ -107,19 +88,16 @@ export async function checkFileExists({
   try {
     // Create where condition using the suggested format
     const whereCondition = {
-      $and: [
-        { userId: userId },
-        { source: filePath }
-      ]
+      $and: [{userId: userId}, {source: filePath}],
     };
-    
+
     // Query the collection with a filter for the file path
     const results = await collection.query({
-      queryTexts: [""],  // Empty query to match based on filters only
+      queryTexts: [""], // Empty query to match based on filters only
       nResults: 1,
       where: whereCondition,
     });
-    
+
     return {
       success: true,
       exists: results.ids[0]?.length > 0,
@@ -134,10 +112,6 @@ export async function checkFileExists({
   }
 }
 
-/**
- * Processes a file for RAG by reading its content, splitting into chunks,
- * and storing in the vector database with embeddings
- */
 export async function embedFile({
   filePath,
   language = "js",
@@ -225,23 +199,24 @@ export async function queryVectorStore({
 }) {
   try {
     // Build conditions array for the $and operator
-    const conditions: Record<string, any>[] = [{ userId: userId }];
-    
+    const conditions: Record<string, any>[] = [{userId: userId}];
+
     // Add other filters
     for (const [key, value] of Object.entries(filters)) {
-      if (value !== undefined && key !== 'userId') { // Avoid duplicating userId
-        conditions.push({ [key]: value });
+      if (value !== undefined && key !== "userId") {
+        // Avoid duplicating userId
+        conditions.push({[key]: value});
       }
     }
-    
+
     // Log the where clause for debugging
-    const whereClause = { $and: conditions };
-    console.log('ChromaDB where clause:', JSON.stringify(whereClause, null, 2));
+    const whereClause = {$and: conditions};
+    console.log("ChromaDB where clause:", JSON.stringify(whereClause, null, 2));
 
     let queryOptions: any = {
       queryTexts: [query],
       nResults: limit,
-      where: whereClause
+      where: whereClause,
     };
 
     // Query the collection with the embedded query
@@ -297,11 +272,11 @@ export async function generateRagResponse({
   try {
     // First, retrieve relevant chunks
     const filters: Record<string, any> = {};
-    
+
     // Only add valid filters
     if (userId) filters.userId = userId;
     if (filePath) filters.source = filePath;
-    
+
     const retrievalResult = await queryVectorStore({
       query,
       userId,
@@ -323,7 +298,7 @@ export async function generateRagResponse({
     // Prepare the context from retrieved chunks
     const context = retrievalResult.results
       .map(
-        (result: { metadata: { source?: string }, content: string }) =>
+        (result: {metadata: {source?: string}; content: string}) =>
           `CHUNK (from ${result.metadata.source || "unknown source"}):\n${
             result.content
           }`
@@ -360,11 +335,13 @@ Provide a clear, accurate response based on the code context. If the context doe
       success: true,
       response,
       sourcesCount: retrievalResult.results.length,
-      sources: retrievalResult.results.map((r: { id: string, metadata: { source: string }, score: number }) => ({
-        id: r.id,
-        source: r.metadata.source,
-        score: r.score,
-      })),
+      sources: retrievalResult.results.map(
+        (r: {id: string; metadata: {source: string}; score: number}) => ({
+          id: r.id,
+          source: r.metadata.source,
+          score: r.score,
+        })
+      ),
     };
   } catch (error) {
     console.error("Error in RAG response generation:", error);
@@ -373,5 +350,298 @@ Provide a clear, accurate response based on the code context. If the context doe
       error: error instanceof Error ? error.message : String(error),
       response: "I encountered an error trying to answer your question.",
     };
+  }
+}
+
+/**
+ * Deletes a specific file's chunks from the vector store
+ */
+export async function deleteFileEmbeddings({
+  filePath,
+  userId = TEMPORARY_USER_ID,
+}: {
+  filePath: string;
+  userId?: string;
+}) {
+  try {
+    // Create where condition
+    const whereCondition = {
+      $and: [{userId: userId}, {source: filePath}],
+    };
+
+    // Get the IDs of chunks to delete
+    const results = await collection.query({
+      queryTexts: [""], // Empty query to match based on filters only
+      where: whereCondition,
+    });
+
+    if (results.ids[0]?.length > 0) {
+      // Delete the chunks
+      await collection.delete({
+        ids: results.ids[0],
+      });
+
+      return {
+        success: true,
+        deletedCount: results.ids[0].length,
+        message: `Successfully deleted ${results.ids[0].length} chunks for ${filePath}`,
+      };
+    }
+
+    return {
+      success: true,
+      deletedCount: 0,
+      message: `No chunks found for ${filePath}`,
+    };
+  } catch (error) {
+    console.error("Error deleting file from vector store:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Handles file changes from the file watcher service
+ * and updates the vector store accordingly
+ */
+export async function handleFileChange({
+  filePath,
+  changeType,
+  userId = TEMPORARY_USER_ID,
+}: {
+  filePath: string;
+  changeType: FileChangeType;
+  userId?: string;
+}) {
+  try {
+    // Determine file language from extension
+    const extension = path.extname(filePath).toLowerCase();
+    const languageMap: Record<
+      string,
+      | "cpp"
+      | "go"
+      | "java"
+      | "js"
+      | "php"
+      | "proto"
+      | "python"
+      | "rst"
+      | "ruby"
+      | "rust"
+      | "scala"
+      | "swift"
+      | "markdown"
+      | "latex"
+      | "html"
+      | "sol"
+    > = {
+      ".js": "js",
+      ".jsx": "js",
+      ".ts": "js",
+      ".tsx": "js",
+      ".py": "python",
+      ".java": "java",
+      ".cpp": "cpp",
+      ".c": "cpp",
+      ".go": "go",
+      ".rb": "ruby",
+      ".rs": "rust",
+      ".php": "php",
+      ".md": "markdown",
+      ".html": "html",
+      ".sol": "sol",
+    };
+
+    // Default to "js" if extension not found, but ensure it's a valid language type
+    const language = languageMap[extension] || "js";
+
+    switch (changeType) {
+      case FileChangeType.ADDED:
+        // For new files, just embed the entire file
+        return await embedFile({filePath, language, userId});
+
+      case FileChangeType.UPDATED:
+        // For updated files, we'll do smart updating of only changed chunks
+        return await updateChangedChunks({filePath, language, userId});
+
+      case FileChangeType.DELETED:
+        // For deleted files, just delete the embeddings
+        return await deleteFileEmbeddings({filePath, userId});
+
+      default:
+        return {
+          success: false,
+          error: `Unknown change type: ${changeType}`,
+        };
+    }
+  } catch (error) {
+    console.error("Error handling file change:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Updates only the changed chunks of a file in the vector store
+ * This is more efficient than re-embedding the entire file for small changes
+ */
+async function updateChangedChunks({
+  filePath,
+  language,
+  userId = TEMPORARY_USER_ID,
+}: {
+  filePath: string;
+  language:
+    | "cpp"
+    | "go"
+    | "java"
+    | "js"
+    | "php"
+    | "proto"
+    | "python"
+    | "rst"
+    | "ruby"
+    | "rust"
+    | "scala"
+    | "swift"
+    | "markdown"
+    | "latex"
+    | "html"
+    | "sol";
+  userId?: string;
+}) {
+  try {
+    // First, get the current file content
+    const fileContent = await fs.readFile(filePath, "utf-8");
+
+    // Create a splitter based on the language
+    const splitter = RecursiveCharacterTextSplitter.fromLanguage(language, {
+      chunkSize: 1000,
+      chunkOverlap: 100,
+    });
+
+    // Split the current content into chunks
+    const currentChunks = await splitter.splitText(fileContent);
+
+    // Generate current chunk IDs and metadata
+    const currentIds = currentChunks.map(
+      (_, i) => `${path.basename(filePath)}-chunk-${i}`
+    );
+    const currentMetadata = currentChunks.map(() => ({
+      source: filePath,
+      userId,
+      language,
+      timestamp: new Date().toISOString(),
+    }));
+
+    // Get the previously stored chunks from the vector store
+    const whereCondition = {
+      $and: [{userId: userId}, {source: filePath}],
+    };
+
+    const previousResults = await collection.query({
+      queryTexts: [""], // Empty query to match based on filters only
+      where: whereCondition,
+    });
+
+    // If there are no previous chunks, just embed the whole file
+    if (!previousResults.ids[0]?.length) {
+      console.log(
+        `No previous chunks found for ${filePath}, embedding entire file`
+      );
+      return await embedFile({filePath, language, userId});
+    }
+
+    // Track the changes
+    const previousIds = previousResults.ids[0];
+    const previousDocs = previousResults.documents[0];
+
+    // Compare chunk count
+    if (previousIds.length !== currentIds.length) {
+      console.log(
+        `Chunk count changed for ${filePath} (${previousIds.length} -> ${currentIds.length}), re-embedding entire file`
+      );
+      // Structure changed significantly, re-embed the entire file
+      await deleteFileEmbeddings({filePath, userId});
+      return await embedFile({filePath, language, userId});
+    }
+
+    // Check which chunks have changed by comparing the content
+    const changedChunkIndices = [];
+    for (let i = 0; i < currentChunks.length; i++) {
+      if (currentChunks[i] !== previousDocs[i]) {
+        changedChunkIndices.push(i);
+      }
+    }
+
+    // If no chunks changed, nothing to do
+    if (changedChunkIndices.length === 0) {
+      console.log(`No chunks changed for ${filePath}, skipping update`);
+      return {
+        success: true,
+        message: `No changes detected in chunks for ${filePath}`,
+        changedCount: 0,
+      };
+    }
+
+    // If many chunks changed (over 50%), just re-embed the whole file
+    if (changedChunkIndices.length > currentChunks.length * 0.5) {
+      console.log(
+        `Many chunks (${changedChunkIndices.length} of ${currentChunks.length}) changed for ${filePath}, re-embedding entire file`
+      );
+      await deleteFileEmbeddings({filePath, userId});
+      return await embedFile({filePath, language, userId});
+    }
+
+    console.log(
+      `Updating ${changedChunkIndices.length} changed chunks for ${filePath}`
+    );
+
+    // Delete just the changed chunks
+    const idsToDelete = changedChunkIndices.map((i) => previousIds[i]);
+    await collection.delete({
+      ids: idsToDelete,
+    });
+
+    // Add the updated chunks
+    const changedChunks = changedChunkIndices.map((i) => currentChunks[i]);
+    const changedIds = changedChunkIndices.map((i) => currentIds[i]);
+    const changedMetadata = changedChunkIndices.map((i) => currentMetadata[i]);
+
+    await collection.add({
+      ids: changedIds,
+      metadatas: changedMetadata,
+      documents: changedChunks,
+    });
+
+    return {
+      success: true,
+      message: `Successfully updated ${changedChunkIndices.length} chunks for ${filePath}`,
+      changedCount: changedChunkIndices.length,
+    };
+  } catch (error) {
+    console.error(`Error updating changed chunks for ${filePath}:`, error);
+
+    // If smart updating fails, fall back to re-embedding the entire file
+    console.log(`Falling back to full re-embedding for ${filePath}`);
+    try {
+      await deleteFileEmbeddings({filePath, userId});
+      return await embedFile({filePath, language, userId});
+    } catch (fallbackError) {
+      console.error(
+        `Even fallback re-embedding failed for ${filePath}:`,
+        fallbackError
+      );
+      return {
+        success: false,
+        error: `Failed to update changed chunks: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
   }
 }
