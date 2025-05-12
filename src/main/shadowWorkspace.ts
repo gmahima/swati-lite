@@ -5,6 +5,7 @@ import * as os from "os";
 import {app} from "electron";
 import {exec} from "child_process";
 import {promisify} from "util";
+import {FileChange, FileChangeType} from "./fileWatcher";
 
 const execAsync = promisify(exec);
 
@@ -42,6 +43,115 @@ class ShadowWorkspaceService {
       ShadowWorkspaceService.instance = new ShadowWorkspaceService();
     }
     return ShadowWorkspaceService.instance;
+  }
+
+  /**
+   * Initialize event listeners for the shadow workspace service
+   * This should be called after fileWatcherService is initialized
+   */
+  initEventListeners(fileWatcherService: any) {
+    console.log("[ShadowWorkspaceService] Initializing event listeners");
+
+    // Listen for shadow:sync events from fileWatcherService
+    fileWatcherService.on("shadow:sync", (change: FileChange) => {
+      this.handleFileChange(change);
+    });
+  }
+
+  /**
+   * Handle file changes for shadow workspace syncing
+   */
+  private async handleFileChange(change: FileChange): Promise<void> {
+    try {
+      const originalPath = change.path;
+      // Get the directory of the file
+      const dirPath = path.dirname(originalPath);
+
+      // Find the shadow workspace info for this path
+      const workspaceInfo = this.findWorkspaceForPath(dirPath);
+
+      if (!workspaceInfo) {
+        // No shadow workspace for this path, nothing to sync
+        return;
+      }
+
+      // Calculate the relative path within the original workspace
+      const relativePath = path.relative(
+        workspaceInfo.originalPath,
+        originalPath
+      );
+
+      // Calculate the path in the shadow workspace
+      const shadowPath = path.join(workspaceInfo.shadowPath, relativePath);
+      console.log("shadowPath", shadowPath);
+      console.log("workspaceInfo.shadowPath", workspaceInfo.shadowPath);
+      console.log("relativePath", relativePath);
+      console.log(
+        `[ShadowWorkspace] Syncing ${
+          change.type === FileChangeType.ADDED
+            ? "new"
+            : change.type === FileChangeType.UPDATED
+            ? "updated"
+            : "deleted"
+        } file: ${originalPath} -> ${shadowPath}`
+      );
+
+      switch (change.type) {
+        case FileChangeType.ADDED:
+        case FileChangeType.UPDATED:
+          // For both add and update operations, we copy the file
+          // If it's a directory
+          if (
+            fs.existsSync(originalPath) &&
+            fs.lstatSync(originalPath).isDirectory()
+          ) {
+            // Create directory in shadow workspace
+            if (!fs.existsSync(shadowPath)) {
+              fs.mkdirSync(shadowPath, {recursive: true});
+            }
+          } else {
+            // It's a file, copy it to shadow workspace
+            try {
+              // Ensure the directory exists in the shadow workspace
+              const shadowDir = path.dirname(shadowPath);
+              if (!fs.existsSync(shadowDir)) {
+                fs.mkdirSync(shadowDir, {recursive: true});
+              }
+
+              // Copy the file
+              fs.copyFileSync(originalPath, shadowPath);
+              console.log(
+                `[ShadowWorkspace] Synced file to shadow workspace: ${shadowPath}`
+              );
+            } catch (error) {
+              console.error(
+                `[ShadowWorkspace] Error copying file to shadow workspace: ${originalPath} -> ${shadowPath}`,
+                error
+              );
+            }
+          }
+          break;
+
+        case FileChangeType.DELETED:
+          // Delete the file or directory from shadow workspace
+          if (fs.existsSync(shadowPath)) {
+            if (fs.lstatSync(shadowPath).isDirectory()) {
+              fs.rmSync(shadowPath, {recursive: true, force: true});
+            } else {
+              fs.unlinkSync(shadowPath);
+            }
+            console.log(
+              `[ShadowWorkspace] Deleted from shadow workspace: ${shadowPath}`
+            );
+          }
+          break;
+      }
+    } catch (error) {
+      console.error(
+        "[ShadowWorkspace] Error syncing with shadow workspace:",
+        error
+      );
+    }
   }
 
   /**

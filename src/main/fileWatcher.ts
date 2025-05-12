@@ -156,6 +156,13 @@ class FileWatcherService extends EventEmitter {
       async (_, filePath: string, content: string) => {
         try {
           await fs.promises.writeFile(filePath, content);
+          
+          // Emit shadow sync event
+          this.emit("shadow:sync", {
+            type: FileChangeType.UPDATED,
+            path: filePath
+          });
+          
           return true;
         } catch (error) {
           const errorMessage =
@@ -191,6 +198,12 @@ class FileWatcherService extends EventEmitter {
           console.log(`[FileWatcher] Saving file: ${filePath}`);
           fs.writeFileSync(filePath, content, "utf-8");
           console.log(`[FileWatcher] File saved successfully: ${filePath}`);
+
+          // Emit shadow sync event
+          this.emit("shadow:sync", {
+            type: FileChangeType.UPDATED,
+            path: filePath
+          });
 
           // After successful save, manually trigger a file change event
           try {
@@ -236,6 +249,13 @@ class FileWatcherService extends EventEmitter {
 
         // Create empty file
         fs.writeFileSync(filePath, "", "utf-8");
+
+        // Emit shadow sync event
+        this.emit("shadow:sync", {
+          type: FileChangeType.ADDED,
+          path: filePath,
+        });
+
         return true;
       } catch (error) {
         console.error("Error creating file:", error);
@@ -257,6 +277,13 @@ class FileWatcherService extends EventEmitter {
 
         // Create directory and any parents
         fs.mkdirSync(dirPath, {recursive: true});
+
+        // Emit shadow sync event
+        this.emit("shadow:sync", {
+          type: FileChangeType.ADDED,
+          path: dirPath,
+        });
+
         return true;
       } catch (error) {
         console.error("Error creating directory:", error);
@@ -313,6 +340,7 @@ class FileWatcherService extends EventEmitter {
       return false;
     }
   }
+  
   // Stop watching a directory for a specific subscriber
   unwatchDirectory(dirPath: string, subscriberId: string): boolean {
     try {
@@ -345,6 +373,7 @@ class FileWatcherService extends EventEmitter {
       return false;
     }
   }
+  
   // Clean up all watchers for a specific subscriber (when window closes)
   cleanupWatchers(subscriberId: string): void {
     for (const [dirPath, subscribers] of this.subscribers.entries()) {
@@ -373,6 +402,9 @@ class FileWatcherService extends EventEmitter {
       type: changeType,
       path: filePath,
     };
+
+    // Emit shadow workspace sync event
+    this.emit("shadow:sync", change);
 
     // Emit the change event for our internal services
     this.emit("file:change", change);

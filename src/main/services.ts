@@ -24,7 +24,20 @@ export function initializeServices() {
   // Log that services are being initialized
   console.log("[Services] Initializing services...");
 
-  // Any setup code that needs both services can go here
+  // Initialize shadow workspace first as other services depend on it
+  console.log("[Services] Initializing ShadowWorkspaceService");
+
+  // Initialize file watcher next
+  console.log("[Services] Initializing FileWatcherService");
+
+  // Initialize embedding service last
+  console.log("[Services] Initializing FileWatcherEmbeddingService");
+
+  // Set up event listeners between services
+  console.log("[Services] Setting up event listeners between services");
+  shadowWorkspaceService.initEventListeners(fileWatcherService);
+
+  // Any setup code that needs all services can go here
   console.log(
     "[Services] FileWatcher, FileWatcherEmbeddingService, and ShadowWorkspaceService initialized"
   );
