@@ -13,7 +13,12 @@ import {ChromaClient} from "chromadb";
 import fetch from "node-fetch";
 import * as path from "path";
 import * as os from "os";
-import {TEMPORARY_USER_ID} from "../lib/constants.ts";
+import {
+  TEMPORARY_USER_ID,
+  EMBEDDING_LANGUAGE_MAP,
+  getEmbeddingLanguage,
+  EmbeddingLanguageType,
+} from "../lib/constants";
 import {FileChangeType} from "./fileWatcher";
 require("dotenv").config();
 
@@ -119,23 +124,7 @@ export async function embedFile({
   metadata = {},
 }: {
   filePath: string;
-  language?:
-    | "cpp"
-    | "go"
-    | "java"
-    | "js"
-    | "php"
-    | "proto"
-    | "python"
-    | "rst"
-    | "ruby"
-    | "rust"
-    | "scala"
-    | "swift"
-    | "markdown"
-    | "latex"
-    | "html"
-    | "sol";
+  language?: EmbeddingLanguageType;
   userId?: string;
   metadata?: Record<string, any>;
 }) {
@@ -418,44 +407,9 @@ export async function handleFileChange({
   try {
     // Determine file language from extension
     const extension = path.extname(filePath).toLowerCase();
-    const languageMap: Record<
-      string,
-      | "cpp"
-      | "go"
-      | "java"
-      | "js"
-      | "php"
-      | "proto"
-      | "python"
-      | "rst"
-      | "ruby"
-      | "rust"
-      | "scala"
-      | "swift"
-      | "markdown"
-      | "latex"
-      | "html"
-      | "sol"
-    > = {
-      ".js": "js",
-      ".jsx": "js",
-      ".ts": "js",
-      ".tsx": "js",
-      ".py": "python",
-      ".java": "java",
-      ".cpp": "cpp",
-      ".c": "cpp",
-      ".go": "go",
-      ".rb": "ruby",
-      ".rs": "rust",
-      ".php": "php",
-      ".md": "markdown",
-      ".html": "html",
-      ".sol": "sol",
-    };
 
-    // Default to "js" if extension not found, but ensure it's a valid language type
-    const language = languageMap[extension] || "js";
+    // Use the centralized language mapping and fallback
+    const language = getEmbeddingLanguage(extension);
 
     switch (changeType) {
       case FileChangeType.ADDED:
@@ -495,23 +449,7 @@ async function updateChangedChunks({
   userId = TEMPORARY_USER_ID,
 }: {
   filePath: string;
-  language:
-    | "cpp"
-    | "go"
-    | "java"
-    | "js"
-    | "php"
-    | "proto"
-    | "python"
-    | "rst"
-    | "ruby"
-    | "rust"
-    | "scala"
-    | "swift"
-    | "markdown"
-    | "latex"
-    | "html"
-    | "sol";
+  language: EmbeddingLanguageType;
   userId?: string;
 }) {
   try {

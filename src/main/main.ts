@@ -126,34 +126,6 @@ const generateNonce = () => {
 // Store for window-specific nonces
 const windowNonces = new Map();
 
-// Helper function to determine file language based on extension
-const getLanguageFromPath = (filePath: string) => {
-  const ext = path.extname(filePath).toLowerCase();
-  const languageMap: Record<string, string> = {
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".html": "html",
-    ".css": "css",
-    ".json": "json",
-    ".md": "markdown",
-    ".py": "python",
-    ".java": "java",
-    ".c": "c",
-    ".cpp": "cpp",
-    ".go": "go",
-    ".rs": "rust",
-    ".rb": "ruby",
-    ".php": "php",
-    ".sh": "shell",
-    ".yaml": "yaml",
-    ".yml": "yaml",
-    ".xml": "xml",
-  };
-
-  return languageMap[ext] || "plaintext";
-};
 
 // Helper function to add a project to recent projects
 const addToRecentProjects = (projectPath: string) => {
@@ -356,8 +328,7 @@ app.whenReady().then(() => {
       try {
         // We can optionally copy files too if needed with copyFiles: true
         const shadowInfo = await shadowWorkspaceService.createShadowWorkspace(
-          folderPath,
-          false // Just creating directory structure for now, no need to copy all files
+          folderPath
         );
         console.log(
           `Created shadow workspace: ${shadowInfo.shadowPath} for ${folderPath}`
@@ -370,12 +341,8 @@ app.whenReady().then(() => {
         // Continue even if shadow workspace creation fails - it's not critical
       }
 
-      // Add the folder to the embedding service watch list
-      await fileWatcherEmbeddingService.watchPathForEmbedding(folderPath);
-      console.log(`Started watching ${folderPath} for RAG indexing`);
-
-      // Recursively scan and embed important files
-      await scanAndEmbedDirectory(folderPath);
+      // Emit project open event to trigger embedding via the event system
+      fileWatcherService.notifyProjectOpen(folderPath);
 
       addToRecentProjects(folderPath);
       return {
@@ -422,8 +389,7 @@ app.whenReady().then(() => {
         try {
           // We can optionally copy files too if needed with copyFiles: true
           const shadowInfo = await shadowWorkspaceService.createShadowWorkspace(
-            projectPath,
-            false // Just creating directory structure for now, no need to copy all files
+            projectPath
           );
           console.log(
             `Created shadow workspace: ${shadowInfo.shadowPath} for ${projectPath}`
@@ -436,12 +402,8 @@ app.whenReady().then(() => {
           // Continue even if shadow workspace creation fails - it's not critical
         }
 
-        // Add the folder to embedding service watch list
-        await fileWatcherEmbeddingService.watchPathForEmbedding(projectPath);
-        console.log(`Started watching ${projectPath} for RAG indexing`);
-
-        // Recursively scan and embed important files
-        await scanAndEmbedDirectory(projectPath);
+        // Emit project open event for recent project to trigger embedding via the event system
+        fileWatcherService.notifyProjectOpen(projectPath);
 
         // Update the workspace root
         store.set("workspaceRoot", projectPath);
@@ -669,71 +631,5 @@ app.on("quit", async () => {
 });
 
 // Helper function to recursively scan and embed important files in a directory
-async function scanAndEmbedDirectory(dirPath: string) {
-  try {
-    console.log(`Scanning directory for indexing: ${dirPath}`);
-
-    // Define file extensions we want to index
-    const importantExtensions = new Set([
-      ".js",
-      ".jsx",
-      ".ts",
-      ".tsx",
-      ".py",
-      ".java",
-      ".cpp",
-      ".c",
-      ".go",
-      ".rb",
-      ".rs",
-      ".php",
-      ".md",
-      ".html",
-      ".css",
-      ".json",
-    ]);
-
-    // Get all files in the directory
-    const entries = await fs.promises.readdir(dirPath, {withFileTypes: true});
-
-    // Process each entry
-    for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
-
-      if (entry.isDirectory()) {
-        // Skip node_modules and other common large directories
-        if (
-          entry.name === "node_modules" ||
-          entry.name === ".git" ||
-          entry.name === "dist" ||
-          entry.name === "build"
-        ) {
-          continue;
-        }
-
-        // Recursively scan subdirectories
-        await scanAndEmbedDirectory(fullPath);
-      } else if (entry.isFile()) {
-        // Check if the file has an important extension
-        const ext = path.extname(fullPath).toLowerCase();
-        if (importantExtensions.has(ext)) {
-          // Check if the file is already indexed
-          const fileExists = await checkFileExists({filePath: fullPath});
-
-          if (!fileExists.exists) {
-            console.log(`Embedding file: ${fullPath}`);
-            // Trigger embedding using our handleFileChange function
-            await handleFileChange({
-              filePath: fullPath,
-              changeType: FileChangeType.ADDED,
-            });
-          }
-        }
-      }
-    }
-
-    console.log(`Completed scanning directory: ${dirPath}`);
-  } catch (error) {
-    console.error(`Error scanning directory ${dirPath}:`, error);
-  }
-}
+// Removed as this functionality has been moved to FileWatcherEmbeddingService
+// async function scanAndEmbedDirectory(dirPath: string) { ... }

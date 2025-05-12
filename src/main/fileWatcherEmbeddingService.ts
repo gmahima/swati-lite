@@ -1,8 +1,21 @@
-import {fileWatcherService, FileChangeType, FileChange} from "./fileWatcher";
-import {handleFileChange} from "./ragService";
+import {
+  fileWatcherService,
+  FileChangeType,
+  FileChange,
+  ProjectEvent,
+  ProjectEventType,
+} from "./fileWatcher";
+import {handleFileChange, checkFileExists} from "./ragService";
 import * as path from "path";
-import {TEMPORARY_USER_ID} from "../lib/constants.ts";
+import {
+  TEMPORARY_USER_ID,
+  EMBEDDABLE_FILE_EXTENSIONS,
+  IGNORED_DIRECTORIES,
+  getEmbeddingLanguage,
+  EMBEDDING_LANGUAGE_MAP,
+} from "../lib/constants";
 import {ipcMain} from "electron";
+import * as fs from "fs/promises";
 
 // Debounce helper function
 function debounce<T extends (...args: any[]) => any>(
@@ -26,32 +39,8 @@ function debounce<T extends (...args: any[]) => any>(
 class FileWatcherEmbeddingService {
   private static instance: FileWatcherEmbeddingService;
   private watchedPaths = new Set<string>();
-  private fileExtensions = new Set([
-    ".js",
-    ".jsx",
-    ".ts",
-    ".tsx",
-    ".py",
-    ".java",
-    ".cpp",
-    ".c",
-    ".go",
-    ".rb",
-    ".rs",
-    ".php",
-    ".md",
-    ".html",
-    ".sol",
-    ".json",
-  ]);
-
-  // Directories to ignore
-  private ignoredDirectories = new Set([
-    "node_modules",
-    ".git",
-    "dist",
-    "build",
-  ]);
+  private fileExtensions = new Set<string>();
+  private ignoredDirectories = new Set<string>();
 
   // Pending file changes - used to avoid processing the same file multiple times
   private pendingChanges = new Map<string, FileChangeType>();
@@ -66,6 +55,10 @@ class FileWatcherEmbeddingService {
   }> = [];
 
   private constructor() {
+    // Initialize sets from imported constants
+    this.fileExtensions = new Set(EMBEDDABLE_FILE_EXTENSIONS);
+    this.ignoredDirectories = new Set(IGNORED_DIRECTORIES);
+
     // Setup event listeners for file changes
     this.setupEventListeners();
   }
@@ -91,6 +84,25 @@ class FileWatcherEmbeddingService {
       );
       // Use debounced function to handle file changes
       this.debouncedHandleFileChangeEvent(change);
+    });
+
+    // Listen for project open events
+    fileWatcherService.on("project:open", (event: ProjectEvent) => {
+      console.log(
+        `[FileWatcherEmbeddingService] Received project:open event for ${event.path}`
+      );
+
+      // Add the folder to watched paths
+      this.watchPathForEmbedding(event.path)
+        .then(() => {
+          // Scan and embed files
+          this.scanAndEmbedDirectory(event.path);
+        })
+        .catch((error) => {
+          console.error(
+            `[FileWatcherEmbeddingService] Error processing project:open event: ${error}`
+          );
+        });
     });
 
     // Also listen for file saves from the editor to trigger embedding updates
@@ -234,6 +246,69 @@ class FileWatcherEmbeddingService {
   }
 
   /**
+   * Recursively scan and embed files in a directory
+   * @param dirPath Directory to scan
+   */
+  public async scanAndEmbedDirectory(dirPath: string): Promise<void> {
+    try {
+      console.log(
+        `[FileWatcherEmbeddingService] Scanning directory for indexing: ${dirPath}`
+      );
+
+      // Get all files in the directory
+      const entries = await fs.readdir(dirPath, {withFileTypes: true});
+
+      // Process each entry
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+
+        if (entry.isDirectory()) {
+          // Skip ignored directories
+          if (this.ignoredDirectories.has(entry.name)) {
+            console.log(
+              `[FileWatcherEmbeddingService] Skipping ignored directory: ${entry.name}`
+            );
+            continue;
+          }
+
+          // Recursively scan subdirectories
+          await this.scanAndEmbedDirectory(fullPath);
+        } else if (entry.isFile()) {
+          // Check if the file has an embeddable extension
+          const ext = path.extname(fullPath).toLowerCase();
+          if (this.fileExtensions.has(ext)) {
+            // Check if the file is already indexed
+            const fileExists = await checkFileExists({filePath: fullPath});
+
+            if (!fileExists.exists) {
+              // New file that hasn't been indexed before
+              console.log(
+                `[FileWatcherEmbeddingService] Embedding new file: ${fullPath}`
+              );
+              await this.processFileChange(fullPath, FileChangeType.ADDED);
+            } else {
+              // File exists - check for changes and update if needed
+              console.log(
+                `[FileWatcherEmbeddingService] Checking existing file for changes: ${fullPath}`
+              );
+              await this.processFileChange(fullPath, FileChangeType.UPDATED);
+            }
+          }
+        }
+      }
+
+      console.log(
+        `[FileWatcherEmbeddingService] Completed scanning directory: ${dirPath}`
+      );
+    } catch (error) {
+      console.error(
+        `[FileWatcherEmbeddingService] Error scanning directory ${dirPath}:`,
+        error
+      );
+    }
+  }
+
+  /**
    * Start monitoring a directory for file changes to update embeddings
    */
   async watchPathForEmbedding(dirPath: string): Promise<boolean> {
@@ -318,6 +393,30 @@ class FileWatcherEmbeddingService {
    */
   getIgnoredDirectories(): string[] {
     return Array.from(this.ignoredDirectories);
+  }
+
+  /**
+   * Add a file extension to the embeddable list
+   */
+  addFileExtension(extension: string): void {
+    // Ensure the extension starts with a dot
+    const ext = extension.startsWith(".") ? extension : `.${extension}`;
+    this.fileExtensions.add(ext.toLowerCase());
+  }
+
+  /**
+   * Remove a file extension from the embeddable list
+   */
+  removeFileExtension(extension: string): boolean {
+    const ext = extension.startsWith(".") ? extension : `.${extension}`;
+    return this.fileExtensions.delete(ext.toLowerCase());
+  }
+
+  /**
+   * Get the current list of embeddable file extensions
+   */
+  getFileExtensions(): string[] {
+    return Array.from(this.fileExtensions);
   }
 }
 

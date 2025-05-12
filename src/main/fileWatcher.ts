@@ -3,20 +3,34 @@ import * as fs from "fs";
 import * as path from "path";
 import * as chokidar from "chokidar";
 import {EventEmitter} from "events";
+import {getUILanguage} from "../lib/constants";
 
 export enum FileChangeType {
-  ADDED = 1,
-  DELETED = 2,
-  UPDATED = 3,
+  ADDED = "added",
+  UPDATED = "updated",
+  DELETED = "deleted",
+}
+
+// Add project open event type
+export enum ProjectEventType {
+  OPENED = "opened",
+  CLOSED = "closed",
 }
 
 export interface FileChange {
-  type: FileChangeType;
   path: string;
+  type: FileChangeType;
+}
+
+export interface ProjectEvent {
+  path: string;
+  type: ProjectEventType;
 }
 
 class FileWatcherService extends EventEmitter {
-  private watchers = new Map<string, chokidar.FSWatcher>();
+  private static instance: FileWatcherService;
+  private watchedDirectories: Map<string, string[]> = new Map();
+  private watchers: Map<string, chokidar.FSWatcher> = new Map();
   private subscribers = new Map<string, Set<string>>();
 
   constructor() {
@@ -28,30 +42,7 @@ class FileWatcherService extends EventEmitter {
   // Helper function to determine file language based on extension
   private getLanguageFromPath(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
-    const languageMap: Record<string, string> = {
-      ".js": "javascript",
-      ".jsx": "javascript",
-      ".ts": "typescript",
-      ".tsx": "typescript",
-      ".html": "html",
-      ".css": "css",
-      ".json": "json",
-      ".md": "markdown",
-      ".py": "python",
-      ".java": "java",
-      ".c": "c",
-      ".cpp": "cpp",
-      ".go": "go",
-      ".rs": "rust",
-      ".rb": "ruby",
-      ".php": "php",
-      ".sh": "shell",
-      ".yaml": "yaml",
-      ".yml": "yaml",
-      ".xml": "xml",
-    };
-
-    return languageMap[ext] || "plaintext";
+    return getUILanguage(ext);
   }
 
   // Read directory contents recursively
@@ -156,13 +147,13 @@ class FileWatcherService extends EventEmitter {
       async (_, filePath: string, content: string) => {
         try {
           await fs.promises.writeFile(filePath, content);
-          
+
           // Emit shadow sync event
           this.emit("shadow:sync", {
             type: FileChangeType.UPDATED,
-            path: filePath
+            path: filePath,
           });
-          
+
           return true;
         } catch (error) {
           const errorMessage =
@@ -202,7 +193,7 @@ class FileWatcherService extends EventEmitter {
           // Emit shadow sync event
           this.emit("shadow:sync", {
             type: FileChangeType.UPDATED,
-            path: filePath
+            path: filePath,
           });
 
           // After successful save, manually trigger a file change event
@@ -340,7 +331,7 @@ class FileWatcherService extends EventEmitter {
       return false;
     }
   }
-  
+
   // Stop watching a directory for a specific subscriber
   unwatchDirectory(dirPath: string, subscriberId: string): boolean {
     try {
@@ -373,7 +364,7 @@ class FileWatcherService extends EventEmitter {
       return false;
     }
   }
-  
+
   // Clean up all watchers for a specific subscriber (when window closes)
   cleanupWatchers(subscriberId: string): void {
     for (const [dirPath, subscribers] of this.subscribers.entries()) {
@@ -422,6 +413,34 @@ class FileWatcherService extends EventEmitter {
         window.webContents.send("file:change", change);
       }
     }
+  }
+
+  /**
+   * Emit a project open event for embedding service
+   */
+  public notifyProjectOpen(projectPath: string): void {
+    console.log(
+      `[FileWatcherService] Notifying services about project open: ${projectPath}`
+    );
+    this.emit("project:open", {
+      path: projectPath,
+      type: ProjectEventType.OPENED,
+    });
+  }
+
+  /**
+   * Emit a project close event to notify services
+   * @param projectPath The path to the project that was closed
+   */
+  public emitProjectClose(projectPath: string): void {
+    const event: ProjectEvent = {
+      path: projectPath,
+      type: ProjectEventType.CLOSED,
+    };
+    this.emit("project:close", event);
+    console.log(
+      `[FileWatcherService] Emitted project:close event for ${projectPath}`
+    );
   }
 }
 // Export singleton instance
