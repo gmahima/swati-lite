@@ -45,6 +45,14 @@ class FileWatcherEmbeddingService {
     ".json",
   ]);
 
+  // Directories to ignore
+  private ignoredDirectories = new Set([
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+  ]);
+
   // Pending file changes - used to avoid processing the same file multiple times
   private pendingChanges = new Map<string, FileChangeType>();
 
@@ -78,7 +86,9 @@ class FileWatcherEmbeddingService {
 
     // Listen for internal file change events from fileWatcherService
     fileWatcherService.on("file:change", (change: FileChange) => {
-      console.log(`[FileWatcherEmbeddingService] Received internal file change event: ${change.path}`);
+      console.log(
+        `[FileWatcherEmbeddingService] Received internal file change event: ${change.path}`
+      );
       // Use debounced function to handle file changes
       this.debouncedHandleFileChangeEvent(change);
     });
@@ -115,12 +125,34 @@ class FileWatcherEmbeddingService {
     });
   }
 
+  // Check if a file path should be ignored for embedding
+  private shouldIgnorePath(filePath: string): boolean {
+    // Check if the file is in an ignored directory
+    const pathParts = filePath.split(path.sep);
+
+    for (const dir of this.ignoredDirectories) {
+      if (pathParts.includes(dir)) {
+        console.log(
+          `[FileWatcherEmbeddingService] Ignoring file in excluded directory: ${filePath}`
+        );
+        return true;
+      }
+    }
+
+    // Check if the file extension is not in our list
+    const ext = path.extname(filePath).toLowerCase();
+    if (!this.fileExtensions.has(ext)) {
+      return true;
+    }
+
+    return false;
+  }
+
   private processPendingChange(change: FileChange) {
     const {path: filePath, type} = change;
 
-    // Skip if the file extension is not in our list
-    const ext = path.extname(filePath).toLowerCase();
-    if (!this.fileExtensions.has(ext)) {
+    // Skip if the file should be ignored
+    if (this.shouldIgnorePath(filePath)) {
       return;
     }
 
@@ -220,7 +252,7 @@ class FileWatcherEmbeddingService {
       console.log(
         `[FileWatcherEmbeddingService] Directory ${normalizedPath} watch result: ${watchResult}`
       );
-      
+
       return true;
     } catch (error) {
       console.error(`Error watching path for embedding: ${dirPath}`, error);
@@ -265,6 +297,27 @@ class FileWatcherEmbeddingService {
    */
   setMaxConcurrentEmbeddings(max: number): void {
     this.maxConcurrentEmbeddings = max;
+  }
+
+  /**
+   * Add a directory to the ignored list
+   */
+  addIgnoredDirectory(dirName: string): void {
+    this.ignoredDirectories.add(dirName);
+  }
+
+  /**
+   * Remove a directory from the ignored list
+   */
+  removeIgnoredDirectory(dirName: string): boolean {
+    return this.ignoredDirectories.delete(dirName);
+  }
+
+  /**
+   * Get the current list of ignored directories
+   */
+  getIgnoredDirectories(): string[] {
+    return Array.from(this.ignoredDirectories);
   }
 }
 

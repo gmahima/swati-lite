@@ -83,27 +83,9 @@ class ShadowFileService extends EventEmitter {
   async getCorrespondingShadowPath(
     originalFilePath: string
   ): Promise<string | null> {
-    // Get the directory containing the file
     try {
-      const dirPath = originalFilePath.substring(
-        0,
-        originalFilePath.lastIndexOf("/")
-      );
-      if (!dirPath) {
-        return null;
-      }
-
-      // Get the shadow workspace for the directory
-      const shadowWorkspacePath = await this.getShadowWorkspacePath(dirPath);
-      if (!shadowWorkspacePath) {
-        return null;
-      }
-
-      // Calculate the relative path within the workspace
-      const fileName = originalFilePath.substring(
-        originalFilePath.lastIndexOf("/") + 1
-      );
-      return `${shadowWorkspacePath}/${fileName}`;
+      // Simply delegate to the main process which now handles this correctly
+      return await window.electronAPI.getShadowWorkspacePath(originalFilePath);
     } catch (error) {
       console.error("Error getting corresponding shadow path:", error);
       return null;

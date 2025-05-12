@@ -585,14 +585,26 @@ app.whenReady().then(() => {
     return fileWatcherEmbeddingService.getWatchedPaths();
   });
 
+  // Get list of ignored directories
+  ipcMain.handle("rag:getIgnoredDirectories", () => {
+    return fileWatcherEmbeddingService.getIgnoredDirectories();
+  });
+
+  // Add a directory to the ignored list
+  ipcMain.handle("rag:addIgnoredDirectory", (_, dirName: string) => {
+    fileWatcherEmbeddingService.addIgnoredDirectory(dirName);
+    return true;
+  });
+
+  // Remove a directory from the ignored list
+  ipcMain.handle("rag:removeIgnoredDirectory", (_, dirName: string) => {
+    return fileWatcherEmbeddingService.removeIgnoredDirectory(dirName);
+  });
+
   // Shadow workspace IPC handlers
   ipcMain.handle("shadow:getPath", async (_, originalPath: string) => {
-    const shadowWorkspaceInfo =
-      shadowWorkspaceService.getShadowWorkspace(originalPath);
-    if (shadowWorkspaceInfo) {
-      return shadowWorkspaceInfo.shadowPath;
-    }
-    return null;
+    // Use the shadow workspace service's direct path lookup method
+    return shadowWorkspaceService.getShadowPath(originalPath);
   });
 
   // Create shadow workspace
