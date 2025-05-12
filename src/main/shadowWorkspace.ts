@@ -145,12 +145,10 @@ class ShadowWorkspaceService {
   /**
    * Creates a shadow workspace for a project
    * @param projectPath Path to the original project
-   * @param copyFiles Whether to copy file contents or just structure
    * @returns Information about the created shadow workspace
    */
   async createShadowWorkspace(
-    projectPath: string,
-    copyFiles: boolean = false
+    projectPath: string
   ): Promise<ShadowWorkspaceInfo> {
     try {
       const rootDirName = path.basename(projectPath);
@@ -162,13 +160,8 @@ class ShadowWorkspaceService {
       // Create the shadow directory
       fs.mkdirSync(shadowPath, {recursive: true});
 
-      if (copyFiles) {
-        // Copy the entire directory including files
-        await this.manualFlatDirectoryCopy(projectPath, shadowPath);
-      } else {
-        // Copy only the directory structure (without content)
-        await this.copyDirectoryStructure(projectPath, shadowPath);
-      }
+      // Copy the entire directory including files
+      await this.copyDirectoryTree(projectPath, shadowPath);
 
       const workspaceInfo: ShadowWorkspaceInfo = {
         originalPath: projectPath,
@@ -190,39 +183,10 @@ class ShadowWorkspaceService {
   }
 
   /**
-   * Copy directory structure from source to destination
-   * This only copies the directory structure, not file contents
+   * Manual method to copy directory with all files
+   * This creates the directory structure with all files while maintaining paths
    */
-  private async copyDirectoryStructure(
-    source: string,
-    destination: string
-  ): Promise<void> {
-    try {
-      // Use system commands for fast copying of directory structure
-      if (process.platform === "win32") {
-        // Windows - use robocopy with empty file filter
-        await execAsync(
-          `robocopy "${source}" "${destination}" /e /xf * /r:0 /w:0`
-        );
-      } else {
-        // Unix-based systems - create only the workspace root structure
-        // This creates directory structure without including parent paths
-        await execAsync(
-          `cd "${source}" && find . -mindepth 1 -type d -exec mkdir -p "${destination}/{}" \;`
-        );
-      }
-    } catch (error) {
-      console.error("Error copying directory structure:", error);
-      // Fall back to manual directory structure creation
-      await this.manualFlatDirectoryStructureCopy(source, destination);
-    }
-  }
-
-  /**
-   * Manual fallback method to copy directory structure without duplicating parent paths
-   * This creates a flat directory structure with just the workspace contents
-   */
-  private async manualFlatDirectoryStructureCopy(
+  private async copyDirectoryTree(
     source: string,
     destination: string
   ): Promise<void> {
@@ -232,106 +196,22 @@ class ShadowWorkspaceService {
         fs.mkdirSync(destination, {recursive: true});
       }
 
-      // Read all directories recursively and create matching structure
-      // but starting from the workspace root
+      // Process all directories and files
       const processDir = (dir: string, isRoot = false) => {
         const entries = fs.readdirSync(dir, {withFileTypes: true});
 
         for (const entry of entries) {
-          if (entry.isDirectory()) {
-            const srcPath = path.join(dir, entry.name);
-            // For the root, create directly under destination
-            // For subdirs, maintain the relative path
-            const relPath = isRoot
-              ? entry.name
-              : path.relative(source, path.join(dir, entry.name));
-            const destPath = path.join(destination, relPath);
+          const srcPath = path.join(dir, entry.name);
+          const relPath = isRoot ? entry.name : path.relative(source, srcPath);
+          const destPath = path.join(destination, relPath);
 
+          if (entry.isDirectory()) {
             // Create the directory
             if (!fs.existsSync(destPath)) {
               fs.mkdirSync(destPath, {recursive: true});
             }
-
             // Process subdirectories
             processDir(srcPath, false);
-          }
-        }
-      };
-
-      // Start with the source as root
-      processDir(source, true);
-    } catch (error) {
-      console.error("Error in manual flat directory structure copy:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Manual fallback method to copy directory structure
-   * @deprecated Use manualFlatDirectoryStructureCopy instead
-   */
-  //   private async manualDirectoryStructureCopy(
-  //     source: string,
-  //     destination: string
-  //   ): Promise<void> {
-  //     // Delegate to the flat structure copy method
-  //     await this.manualFlatDirectoryStructureCopy(source, destination);
-  //   }
-
-  /**
-   * Copy the entire directory including file contents
-   */
-  private async copyDirectory(
-    source: string,
-    destination: string
-  ): Promise<void> {
-    try {
-      // Use system commands for fast copying
-      if (process.platform === "win32") {
-        // Windows - use xcopy
-        await execAsync(`xcopy "${source}" "${destination}" /E /I /H /Y`);
-      } else {
-        // Unix-based systems - copy just the workspace contents, not parent paths
-        await execAsync(
-          `cd "${source}" && find . -type f | cpio -pdm "${destination}"`
-        );
-      }
-    } catch (error) {
-      console.error("Error copying directory:", error);
-      // Fall back to manual directory copy
-      await this.manualFlatDirectoryCopy(source, destination);
-    }
-  }
-
-  /**
-   * Manual fallback method to copy directory with files without duplicating parent paths
-   * This creates a flat directory structure with just the workspace contents and files
-   */
-  private async manualFlatDirectoryCopy(
-    source: string,
-    destination: string
-  ): Promise<void> {
-    try {
-      // Create the root destination directory
-      if (!fs.existsSync(destination)) {
-        fs.mkdirSync(destination, {recursive: true});
-      }
-
-      // First, create the directory structure
-      await this.manualFlatDirectoryStructureCopy(source, destination);
-
-      // Then, copy all files, maintaining relative paths from workspace root
-      const copyFiles = (dir: string) => {
-        const entries = fs.readdirSync(dir, {withFileTypes: true});
-
-        for (const entry of entries) {
-          const srcPath = path.join(dir, entry.name);
-          const relPath = path.relative(source, srcPath);
-          const destPath = path.join(destination, relPath);
-
-          if (entry.isDirectory()) {
-            // Process subdirectories
-            copyFiles(srcPath);
           } else {
             // Copy the file
             fs.copyFileSync(srcPath, destPath);
@@ -339,25 +219,13 @@ class ShadowWorkspaceService {
         }
       };
 
-      // Start copying files from the source
-      copyFiles(source);
+      // Start with the source as root
+      processDir(source, true);
     } catch (error) {
-      console.error("Error in manual flat directory copy:", error);
+      console.error("Error copying directory:", error);
       throw error;
     }
   }
-
-  //   /**
-  //    * Manual fallback method to copy directory with files
-  //    * @deprecated Use manualFlatDirectoryCopy instead
-  //    */
-  //   private async manualDirectoryCopy(
-  //     source: string,
-  //     destination: string
-  //   ): Promise<void> {
-  //     // Delegate to the flat structure copy method
-  //     await this.manualFlatDirectoryCopy(source, destination);
-  //   }
 
   /**
    * Copy a single file
