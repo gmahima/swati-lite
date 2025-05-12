@@ -1,16 +1,30 @@
-import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Editor, { Monaco } from '@monaco-editor/react';
-import noncePlugin from '../MonacoNoncePlugin';
-import { Button } from './ui/button';
-import AiChat from './AiChat';
-import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from './ui/resizable';
-import FileExplorer from './FileExplorer';
-import { useAppContext } from '../contexts/AppContext';
+import React, {useEffect, useState} from "react";
+import {useNavigate} from "react-router-dom";
+import Editor, {Monaco} from "@monaco-editor/react";
+import noncePlugin from "../MonacoNoncePlugin";
+import {Button} from "./ui/button";
+import AiChat from "./AiChat";
+import {
+  ResizablePanel,
+  ResizablePanelGroup,
+  ResizableHandle,
+} from "./ui/resizable";
+import FileExplorer from "./FileExplorer";
+import {useAppContext} from "../contexts/AppContext";
+import {Save} from "lucide-react";
 
 // FilePreview component handles just the editor functionality
 const FilePreview: React.FC = () => {
-  const { content, language, filePath, isLoading, error, updateContent } = useAppContext();
+  const {
+    content,
+    language,
+    filePath,
+    isLoading,
+    error,
+    updateContent,
+    saveFile,
+  } = useAppContext();
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const navigate = useNavigate();
 
   // Add nonces to any dynamically created script/style elements
@@ -22,22 +36,40 @@ const FilePreview: React.FC = () => {
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
       updateContent(value);
+      setHasUnsavedChanges(true);
     }
   };
 
   const handleEditorDidMount = (editor: any, monaco: Monaco) => {
-    console.log('Editor mounted successfully');
+    console.log("Editor mounted successfully");
     noncePlugin.afterEditorMount(editor, monaco);
     editor.focus();
+
+    // Add keyboard shortcut for save (Ctrl+S or Cmd+S)
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      handleSave();
+    });
   };
 
   const handleEditorWillMount = (monaco: Monaco) => {
-    console.log('Editor will mount');
+    console.log("Editor will mount");
     noncePlugin.beforeEditorMount(monaco);
   };
 
   const handleBackToHome = () => {
-    navigate('/');
+    navigate("/");
+  };
+
+  const handleSave = async () => {
+    if (!filePath) return;
+
+    try {
+      await saveFile();
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error("Failed to save file:", error);
+      // Error is already handled in AppContext
+    }
   };
 
   if (isLoading) {
@@ -54,10 +86,7 @@ const FilePreview: React.FC = () => {
         <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl w-full">
           <h2 className="text-xl font-bold text-red-600 mb-4">Error</h2>
           <p className="text-gray-700 mb-4">{error}</p>
-          <Button
-            onClick={handleBackToHome}
-            variant="default"
-          >
+          <Button onClick={handleBackToHome} variant="default">
             Back to Home
           </Button>
         </div>
@@ -69,15 +98,36 @@ const FilePreview: React.FC = () => {
     <div className="h-full flex flex-col">
       {filePath && (
         <div className="bg-gray-100 p-2 text-sm text-gray-700 border-b flex justify-between items-center">
-          <span>{filePath}</span>
-          <Button
-            onClick={handleBackToHome}
-            variant="ghost"
-            size="sm"
-            className="text-blue-600 hover:text-blue-800"
-          >
-            Back to Home
-          </Button>
+          <span className="flex items-center">
+            {hasUnsavedChanges && (
+              <span
+                className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-2"
+                title="Unsaved changes"
+              ></span>
+            )}
+            {filePath}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleSave}
+              variant="outline"
+              size="sm"
+              className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              disabled={!hasUnsavedChanges}
+              title="Save file (Ctrl+S)"
+            >
+              <Save className="h-4 w-4" />
+              Save
+            </Button>
+            <Button
+              onClick={handleBackToHome}
+              variant="ghost"
+              size="sm"
+              className="text-blue-600 hover:text-blue-800"
+            >
+              Back to Home
+            </Button>
+          </div>
         </div>
       )}
       <div className="flex-grow">
@@ -91,7 +141,7 @@ const FilePreview: React.FC = () => {
           beforeMount={handleEditorWillMount}
           loading={<p className="p-4">Loading editor...</p>}
           options={{
-            minimap: { enabled: true },
+            minimap: {enabled: true},
             scrollBeyondLastLine: false,
             automaticLayout: true,
           }}
@@ -130,4 +180,4 @@ const MonacoEditor: React.FC = () => {
   );
 };
 
-export default MonacoEditor; 
+export default MonacoEditor;

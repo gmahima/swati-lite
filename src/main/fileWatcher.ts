@@ -188,14 +188,85 @@ class FileWatcherService extends EventEmitter {
       "file:save",
       async (_, filePath: string, content: string) => {
         try {
+          console.log(`[FileWatcher] Saving file: ${filePath}`);
           fs.writeFileSync(filePath, content, "utf-8");
+          console.log(`[FileWatcher] File saved successfully: ${filePath}`);
+
+          // After successful save, manually trigger a file change event
+          try {
+            // Get the directory path for the saved file
+            const dirPath = path.dirname(filePath);
+            console.log(`[FileWatcher] File directory: ${dirPath}`);
+
+            // Emit our internal file change event
+            // This will be picked up by any services listening for file changes
+            this.emit("file:change", {
+              type: FileChangeType.UPDATED,
+              path: filePath,
+            });
+            console.log(`[FileWatcher] File change event emitted: ${filePath}`);
+          } catch (embeddingError) {
+            // Log the error but don't fail the save operation
+            console.error(
+              `[FileWatcher] Error processing file change event: ${embeddingError}`
+            );
+          }
+
           return true;
         } catch (error) {
-          console.error("Error saving file:", error);
+          console.error("[FileWatcher] Error saving file:", error);
           return false;
         }
       }
     );
+
+    // Create new file
+    ipcMain.handle("file:create", async (_, filePath: string) => {
+      try {
+        // Check if file already exists
+        if (fs.existsSync(filePath)) {
+          throw new Error(`File already exists: ${filePath}`);
+        }
+
+        // Create any parent directories if they don't exist
+        const dirPath = path.dirname(filePath);
+        if (!fs.existsSync(dirPath)) {
+          fs.mkdirSync(dirPath, {recursive: true});
+        }
+
+        // Create empty file
+        fs.writeFileSync(filePath, "", "utf-8");
+        return true;
+      } catch (error) {
+        console.error("Error creating file:", error);
+        throw new Error(
+          `Failed to create file: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    });
+
+    // Create new directory
+    ipcMain.handle("directory:create", async (_, dirPath: string) => {
+      try {
+        // Check if directory already exists
+        if (fs.existsSync(dirPath)) {
+          throw new Error(`Directory already exists: ${dirPath}`);
+        }
+
+        // Create directory and any parents
+        fs.mkdirSync(dirPath, {recursive: true});
+        return true;
+      } catch (error) {
+        console.error("Error creating directory:", error);
+        throw new Error(
+          `Failed to create directory: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    });
 
     // Get file/directory stats
     ipcMain.handle("file:getStats", async (_, filePath: string) => {
@@ -281,6 +352,14 @@ class FileWatcherService extends EventEmitter {
         this.unwatchDirectory(dirPath, subscriberId);
       }
     }
+  }
+
+  // Public method to watch a directory (can be called by other services)
+  public watchDirectoryForService(dirPath: string, serviceId: string): boolean {
+    console.log(
+      `[FileWatcher] Service ${serviceId} requested to watch ${dirPath}`
+    );
+    return this.watchDirectory(dirPath, serviceId);
   }
 
   private sendChangeEvent(

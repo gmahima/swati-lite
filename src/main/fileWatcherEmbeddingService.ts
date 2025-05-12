@@ -75,12 +75,45 @@ class FileWatcherEmbeddingService {
       // Use debounced function to handle file changes
       this.debouncedHandleFileChangeEvent(change);
     });
+
+    // Listen for internal file change events from fileWatcherService
+    fileWatcherService.on("file:change", (change: FileChange) => {
+      console.log(`[FileWatcherEmbeddingService] Received internal file change event: ${change.path}`);
+      // Use debounced function to handle file changes
+      this.debouncedHandleFileChangeEvent(change);
+    });
+
+    // Also listen for file saves from the editor to trigger embedding updates
+    // ipcMain.handle(
+    //   "file:save",
+    //   async (_, filePath: string, content: string) => {
+    //     // After the file is saved, process it as a change for embedding
+    //     this.debouncedHandleFileChangeEvent({
+    //       path: filePath,
+    //       type: FileChangeType.UPDATED,
+    //     });
+
+    //     // Let the original handler continue (don't return anything here)
+    //     return;
+    //   }
+    // );
   }
 
   // Debounced version of handleFileChangeEvent
   private debouncedHandleFileChangeEvent = debounce((change: FileChange) => {
     this.processPendingChange(change);
   }, this.debounceTimeout);
+
+  // Public method that can be called directly from other services
+  public handleFileChange(
+    filePath: string,
+    changeType: FileChangeType = FileChangeType.UPDATED
+  ) {
+    this.debouncedHandleFileChangeEvent({
+      path: filePath,
+      type: changeType,
+    });
+  }
 
   private processPendingChange(change: FileChange) {
     const {path: filePath, type} = change;
@@ -180,6 +213,14 @@ class FileWatcherEmbeddingService {
       this.watchedPaths.add(normalizedPath);
 
       // Make sure it's being watched by the file watcher service
+      const watchResult = fileWatcherService.watchDirectoryForService(
+        normalizedPath,
+        "embedding-service"
+      );
+      console.log(
+        `[FileWatcherEmbeddingService] Directory ${normalizedPath} watch result: ${watchResult}`
+      );
+      
       return true;
     } catch (error) {
       console.error(`Error watching path for embedding: ${dirPath}`, error);

@@ -11,10 +11,16 @@ import {
   generateRagResponse,
   handleFileChange,
 } from "./ragService";
-// Import the file watcher service which now contains all file handlers
-import {FileChangeType, fileWatcherService} from "./fileWatcher";
-// Import the file watcher embedding service for automatic RAG indexing
-import {fileWatcherEmbeddingService} from "./fileWatcherEmbeddingService";
+// Import services from the centralized services file to avoid circular dependencies
+import { 
+  fileWatcherService, 
+  fileWatcherEmbeddingService, 
+  FileChangeType,
+  initializeServices 
+} from "./services";
+
+// Initialize services early on
+initializeServices();
 
 // Declare types for webpack constants
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;

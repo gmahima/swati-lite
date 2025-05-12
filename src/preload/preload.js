@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openFile: () => ipcRenderer.invoke("dialog:openFile"),
   readFile: (path) => ipcRenderer.invoke("file:read", path),
   saveFile: (path, content) => ipcRenderer.invoke("file:save", path, content),
+  createFile: (path) => ipcRenderer.invoke("file:create", path),
+  createDirectory: (path) => ipcRenderer.invoke("directory:create", path),
   getRecentProjects: () => ipcRenderer.invoke("app:getRecentProjects"),
   openRecentProject: (path) =>
     ipcRenderer.invoke("app:openRecentProject", path),
