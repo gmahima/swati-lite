@@ -292,6 +292,9 @@ function CustomChat() {
   const handler = useCustomChat();
   const {input, setInput, isLoading, append, includeFileContext, toggleFileContext} = handler;
   const { filePath } = useAppContext();
+  const [shadowWriteStatus, setShadowWriteStatus] = useState<string | null>(
+    null
+  );
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -299,6 +302,36 @@ function CustomChat() {
 
     await append({role: "user", content: input});
     setInput("");
+  };
+
+  const handleWriteToShadowFile = async () => {
+    if (!filePath) {
+      setShadowWriteStatus("No file is currently open");
+      return;
+    }
+
+    try {
+      // Read the current file content
+      // const fileContent = await window.electronAPI.readFile(filePath);
+
+      // Append console.log to the file content
+      const result = await window.electronAPI.appendToShadowFile(
+        filePath,
+        '\nconsole.log("hi");'
+      );
+
+      // Update status with the result
+      setShadowWriteStatus(result.message);
+
+      // Clear status after 3 seconds
+      setTimeout(() => {
+        setShadowWriteStatus(null);
+      }, 3000);
+    } catch (error) {
+      setShadowWriteStatus(
+        `Error: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   };
 
   return (
@@ -325,11 +358,15 @@ function CustomChat() {
                 type="button"
                 onClick={toggleFileContext}
                 className={`ml-2 px-3 py-1 rounded text-sm ${
-                  includeFileContext 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-200 text-gray-700'
+                  includeFileContext
+                    ? "bg-blue-500 text-white"
+                    : "bg-gray-200 text-gray-700"
                 }`}
-                title={includeFileContext ? "File context will be included" : "File context will not be included"}
+                title={
+                  includeFileContext
+                    ? "File context will be included"
+                    : "File context will not be included"
+                }
               >
                 {includeFileContext ? "📎 File" : "📎"}
               </button>
@@ -341,13 +378,32 @@ function CustomChat() {
             >
               {isLoading ? "Sending..." : "Send"}
             </button>
+
+            {/* Add shadow file write test button */}
+            {filePath && (
+              <button
+                type="button"
+                onClick={handleWriteToShadowFile}
+                className="ml-2 bg-purple-500 text-white rounded px-3 py-1"
+                title="Write to shadow file"
+              >
+                Write to Shadow File
+              </button>
+            )}
           </form>
+          {shadowWriteStatus && (
+            <div className="mt-1 text-xs text-gray-700 bg-gray-100 p-1 rounded">
+              {shadowWriteStatus}
+            </div>
+          )}
         </div>
       </ChatInput>
       {filePath && (
         <div className="px-2 py-1 text-xs text-gray-500 border-t">
           Current file: {filePath}
-          {includeFileContext && <span className="ml-1 text-blue-500">(included in chat)</span>}
+          {includeFileContext && (
+            <span className="ml-1 text-blue-500">(included in chat)</span>
+          )}
         </div>
       )}
     </ChatSection>

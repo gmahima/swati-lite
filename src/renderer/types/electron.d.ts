@@ -30,6 +30,23 @@ interface ElectronAPI {
   copyFileToShadowWorkspace: (
     originalFilePath: string
   ) => Promise<string | null>;
+  // Shadow file write tools
+  writeToShadowFile: (
+    filePath: string,
+    content: string
+  ) => Promise<{
+    success: boolean;
+    shadowPath: string | null;
+    message: string;
+  }>;
+  appendToShadowFile: (
+    filePath: string,
+    contentToAppend: string
+  ) => Promise<{
+    success: boolean;
+    shadowPath: string | null;
+    message: string;
+  }>;
   ipcRenderer: {
     on: (channel: string, listener: Function) => void;
     once: (channel: string, listener: Function) => void;

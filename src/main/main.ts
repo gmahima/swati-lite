@@ -19,6 +19,8 @@ import {
   FileChangeType,
   initializeServices,
 } from "./services";
+// Import shadow file tools
+import { writeToShadowFile, appendToShadowFile } from './tools/shadowFileTools';
 
 // Initialize services early on
 initializeServices();
@@ -580,6 +582,21 @@ app.whenReady().then(() => {
       originalFilePath
     );
   });
+
+  // Shadow file tools IPC handlers
+  ipcMain.handle(
+    "shadow:writeToFile",
+    async (_, filePath: string, content: string) => {
+      return await writeToShadowFile(filePath, content);
+    }
+  );
+
+  ipcMain.handle(
+    "shadow:appendToFile",
+    async (_, filePath: string, contentToAppend: string) => {
+      return await appendToShadowFile(filePath, contentToAppend);
+    }
+  );
 
   createWindow();
 

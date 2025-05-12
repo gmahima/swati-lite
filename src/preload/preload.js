@@ -39,6 +39,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("shadow:cleanup", originalPath),
   copyFileToShadowWorkspace: (originalFilePath) =>
     ipcRenderer.invoke("shadow:copyFile", originalFilePath),
+  // Shadow file write tools
+  writeToShadowFile: (filePath, content) =>
+    ipcRenderer.invoke("shadow:writeToFile", filePath, content),
+  appendToShadowFile: (filePath, contentToAppend) =>
+    ipcRenderer.invoke("shadow:appendToFile", filePath, contentToAppend),
   // IPC for events
   ipcRenderer: {
     on: (channel, listener) => ipcRenderer.on(channel, listener),
