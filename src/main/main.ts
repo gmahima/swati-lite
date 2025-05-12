@@ -10,6 +10,7 @@ import {
   embedFile,
   generateRagResponse,
   handleFileChange,
+  queryVectorStore,
 } from "./ragService";
 // Import services from the centralized services file to avoid circular dependencies
 import {
@@ -20,7 +21,16 @@ import {
   initializeServices,
 } from "./services";
 // Import shadow file tools
-import { writeToShadowFile, appendToShadowFile } from './tools/shadowFileTools';
+import {writeToShadowFile, appendToShadowFile} from "./tools/shadowFileTools";
+// Import LangChain tools
+import {getShadowFileTools} from "./tools/langchainTools";
+import {ChatPromptTemplate} from "@langchain/core/prompts";
+import {SystemMessage, HumanMessage} from "@langchain/core/messages";
+import {
+  CallbackManagerForToolRun,
+  Callbacks,
+} from "@langchain/core/callbacks/manager";
+import {Serialized} from "@langchain/core/load/serializable";
 
 // Initialize services early on
 initializeServices();
@@ -127,7 +137,6 @@ const generateNonce = () => {
 
 // Store for window-specific nonces
 const windowNonces = new Map();
-
 
 // Helper function to add a project to recent projects
 const addToRecentProjects = (projectPath: string) => {
@@ -437,6 +446,21 @@ app.whenReady().then(() => {
     }
   });
 
+  // Shadow file tools IPC handlers
+  ipcMain.handle(
+    "shadow:writeToFile",
+    async (_, filePath: string, content: string) => {
+      return await writeToShadowFile(filePath, content);
+    }
+  );
+
+  ipcMain.handle(
+    "shadow:appendToFile",
+    async (_, filePath: string, contentToAppend: string) => {
+      return await appendToShadowFile(filePath, contentToAppend);
+    }
+  );
+
   // Handle RAG queries
   ipcMain.on("chat:send", async (event: any, payload: any) => {
     try {
@@ -444,24 +468,7 @@ app.whenReady().then(() => {
 
       const {message, fileContext} = payload;
 
-      // Check if we have file context with a file path, use RAG if available
-      if (fileContext && fileContext.filePath) {
-        const filePath = fileContext.filePath;
-        console.log(`Using RAG for file ${filePath}`);
-
-        // Generate RAG response using the file path for filtering
-        // We don't need to trigger embedding here since the file watcher handles that
-        const ragResponse = await generateRagResponse({
-          query: message.content,
-          filePath,
-        });
-
-        // Send response back to renderer
-        event.sender.send("chat:response", ragResponse.response);
-        return;
-      }
-
-      // If no file context, use the regular chat model
+      // Create the Groq chat model
       const model = new ChatGroq({
         model: "llama3-8b-8192",
         temperature: 0.7,
@@ -469,7 +476,169 @@ app.whenReady().then(() => {
         apiKey: GROQ_API_KEY,
       });
 
-      // For regular flow, just use the message directly without any file context
+      // Check if we have file context with a file path, use RAG if available
+      if (fileContext && fileContext.filePath) {
+        const filePath = fileContext.filePath;
+        console.log(`Using RAG for file ${filePath}`);
+
+        try {
+          // First, retrieve relevant chunks using queryVectorStore
+          const retrievalResult = await queryVectorStore({
+            query: message.content,
+            filters: {source: filePath},
+            limit: 5,
+          });
+
+          if (!retrievalResult.success) {
+            throw new Error(
+              `Failed to retrieve chunks: ${retrievalResult.error}`
+            );
+          }
+
+          // Prepare the context from retrieved chunks
+          const context = retrievalResult.results
+            .map(
+              (result: {metadata: {source?: string}; content: string}) =>
+                `CHUNK (from ${result.metadata.source || "unknown source"}):\n${
+                  result.content
+                }`
+            )
+            .join("\n\n");
+
+          // Get the shadow file tools
+          const shadowTools = getShadowFileTools();
+
+          // Create a very explicit system message about the available tools
+          const systemMessage = new SystemMessage(
+            `You are a helpful AI assistant analyzing code files and helping with modifications.
+            
+            You have access to the following file: ${filePath}
+            
+            Below is the relevant content from the file that matches the user's query:
+            
+            ${context}
+            
+            IMPORTANT: You have EXACTLY TWO tools available:
+            
+            1. write_to_shadow_file - Use this to write entirely new content to a shadow file
+               Parameters:
+               - filePath: string (the path of the file to modify)
+               - content: string (the entire new content of the file)
+            
+            2. append_to_shadow_file - Use this to add content to the end of a shadow file
+               Parameters:
+               - filePath: string (the path of the file to modify)
+               - contentToAppend: string (the content to add to the file)
+            
+            A shadow copy is a duplicate version of a file that allows for testing changes without modifying the original.
+            
+            When a user asks you to modify a file, choose the appropriate tool above.
+            DO NOT attempt to call any other tools or functions.
+            
+            First analyze the code context thoroughly to understand what the user is asking about,
+            then respond to their query in a helpful manner.`
+          );
+
+          // Using the recommended way: bind tools to model instead of creating agent
+          const modelWithTools = model.bindTools(shadowTools);
+
+          // Invoke the model with the message
+          console.log("Sending to model with tools bound...");
+          const response = await modelWithTools.invoke([
+            systemMessage,
+            new HumanMessage(message.content),
+          ]);
+
+          console.log("Tool-enhanced response:", response);
+
+          // Check if the model called any tools
+          if (response.tool_calls && response.tool_calls.length > 0) {
+            // Execute each tool call
+            const toolResults = await Promise.all(
+              response.tool_calls.map(async (toolCall) => {
+                console.log(`Executing tool: ${toolCall.name}`, toolCall.args);
+
+                try {
+                  let result;
+                  if (toolCall.name === "write_to_shadow_file") {
+                    result = await writeToShadowFile(
+                      toolCall.args.filePath,
+                      toolCall.args.content
+                    );
+                  } else if (toolCall.name === "append_to_shadow_file") {
+                    result = await appendToShadowFile(
+                      toolCall.args.filePath,
+                      toolCall.args.contentToAppend
+                    );
+                  } else {
+                    throw new Error(`Unknown tool: ${toolCall.name}`);
+                  }
+
+                  return {
+                    tool_call_id: toolCall.id,
+                    name: toolCall.name,
+                    result: JSON.stringify(result),
+                  };
+                } catch (error) {
+                  console.error(
+                    `Error executing tool ${toolCall.name}:`,
+                    error
+                  );
+                  return {
+                    tool_call_id: toolCall.id,
+                    name: toolCall.name,
+                    result: JSON.stringify({
+                      success: false,
+                      error:
+                        error instanceof Error ? error.message : String(error),
+                    }),
+                  };
+                }
+              })
+            );
+            // TODO:after this, we need to show the diff inside the editor
+            // and in the chat window with accept or reject buttons,
+            // (maybe ask llm to generate some content also, along with tool calls)
+            // and wait for user response.
+            // once user gives response, we will pass it to the tool again for the final llm response.
+
+            // Pass tool results back to model
+            const finalResponse = await model.invoke([
+              systemMessage,
+              new HumanMessage(message.content),
+              response,
+              new HumanMessage( // will be based on acceptance or rejection of the diff
+                // TODO: after the tool calls and acception or rejection, the next human message would be sent.
+                `I've processed your tool calls. Here are the results: ${JSON.stringify(
+                  toolResults,
+                  null,
+                  2
+                )}`
+              ),
+            ]);
+
+            // Send final response to the renderer
+            event.sender.send("chat:response", finalResponse.content);
+          } else {
+            // If no tools were called, just send the response directly
+            event.sender.send("chat:response", response.content);
+          }
+        } catch (ragError) {
+          console.error("Error with RAG and tools:", ragError);
+
+          // Fall back to regular RAG without tools
+          console.log("Falling back to regular RAG without tools");
+          const ragResponse = await generateRagResponse({
+            query: message.content,
+            filePath,
+          });
+
+          event.sender.send("chat:response", ragResponse.response);
+        }
+        return;
+      }
+
+      // If no file context, use regular chat model
       console.log("Sending to model:", message);
       const response = await model.invoke([message]);
 
@@ -582,21 +751,6 @@ app.whenReady().then(() => {
       originalFilePath
     );
   });
-
-  // Shadow file tools IPC handlers
-  ipcMain.handle(
-    "shadow:writeToFile",
-    async (_, filePath: string, content: string) => {
-      return await writeToShadowFile(filePath, content);
-    }
-  );
-
-  ipcMain.handle(
-    "shadow:appendToFile",
-    async (_, filePath: string, contentToAppend: string) => {
-      return await appendToShadowFile(filePath, contentToAppend);
-    }
-  );
 
   createWindow();
 
