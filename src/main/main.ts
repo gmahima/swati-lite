@@ -12,11 +12,12 @@ import {
   handleFileChange,
 } from "./ragService";
 // Import services from the centralized services file to avoid circular dependencies
-import { 
-  fileWatcherService, 
-  fileWatcherEmbeddingService, 
+import {
+  fileWatcherService,
+  fileWatcherEmbeddingService,
+  shadowWorkspaceService,
   FileChangeType,
-  initializeServices 
+  initializeServices,
 } from "./services";
 
 // Initialize services early on
@@ -351,6 +352,24 @@ app.whenReady().then(() => {
         store.get("workspaceRoot")
       );
 
+      // Create shadow workspace for this project
+      try {
+        // We can optionally copy files too if needed with copyFiles: true
+        const shadowInfo = await shadowWorkspaceService.createShadowWorkspace(
+          folderPath,
+          false // Just creating directory structure for now, no need to copy all files
+        );
+        console.log(
+          `Created shadow workspace: ${shadowInfo.shadowPath} for ${folderPath}`
+        );
+      } catch (error) {
+        console.error(
+          `Error creating shadow workspace for ${folderPath}:`,
+          error
+        );
+        // Continue even if shadow workspace creation fails - it's not critical
+      }
+
       // Add the folder to the embedding service watch list
       await fileWatcherEmbeddingService.watchPathForEmbedding(folderPath);
       console.log(`Started watching ${folderPath} for RAG indexing`);
@@ -399,6 +418,24 @@ app.whenReady().then(() => {
       const pathStats = await fs.promises.stat(projectPath);
 
       if (pathStats.isDirectory()) {
+        // Create shadow workspace for this project
+        try {
+          // We can optionally copy files too if needed with copyFiles: true
+          const shadowInfo = await shadowWorkspaceService.createShadowWorkspace(
+            projectPath,
+            false // Just creating directory structure for now, no need to copy all files
+          );
+          console.log(
+            `Created shadow workspace: ${shadowInfo.shadowPath} for ${projectPath}`
+          );
+        } catch (error) {
+          console.error(
+            `Error creating shadow workspace for ${projectPath}:`,
+            error
+          );
+          // Continue even if shadow workspace creation fails - it's not critical
+        }
+
         // Add the folder to embedding service watch list
         await fileWatcherEmbeddingService.watchPathForEmbedding(projectPath);
         console.log(`Started watching ${projectPath} for RAG indexing`);
@@ -548,6 +585,28 @@ app.whenReady().then(() => {
     return fileWatcherEmbeddingService.getWatchedPaths();
   });
 
+  // Shadow workspace IPC handlers
+  ipcMain.handle("shadow:getPath", async (_, originalPath: string) => {
+    const shadowWorkspaceInfo =
+      shadowWorkspaceService.getShadowWorkspace(originalPath);
+    if (shadowWorkspaceInfo) {
+      return shadowWorkspaceInfo.shadowPath;
+    }
+    return null;
+  });
+
+  // Create shadow workspace
+  ipcMain.handle("shadow:cleanup", async (_, originalPath: string) => {
+    return await shadowWorkspaceService.cleanupShadowWorkspace(originalPath);
+  });
+
+  // Copy a file to the shadow workspace
+  ipcMain.handle("shadow:copyFile", async (_, originalFilePath: string) => {
+    return await shadowWorkspaceService.copyFileToShadowWorkspace(
+      originalFilePath
+    );
+  });
+
   createWindow();
 
   // On OS X it's common to re-create a window in the app when the
@@ -570,6 +629,32 @@ app.on("window-all-closed", () => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
+
+// Add app exit handlers to ensure cleanup of shadow workspaces
+app.on("quit", async () => {
+  console.log("Application is quitting, cleaning up resources...");
+
+  // Note: The shadowWorkspaceService already has a cleanup handler attached to app.on('quit'),
+  // but we're adding this as a backup
+
+  // Get all recent projects and clean up their shadow workspaces
+  try {
+    const recentProjects = store.get("recentProjects") || [];
+    for (const project of recentProjects) {
+      try {
+        await shadowWorkspaceService.cleanupShadowWorkspace(project.path);
+      } catch (error) {
+        console.error(
+          `Error cleaning up shadow workspace for ${project.path}:`,
+          error
+        );
+      }
+    }
+    console.log("Shadow workspace cleanup completed on app exit");
+  } catch (error) {
+    console.error("Error during exit cleanup:", error);
+  }
+});
 
 // Helper function to recursively scan and embed important files in a directory
 async function scanAndEmbedDirectory(dirPath: string) {

@@ -7,10 +7,14 @@ import {fileWatcherService, FileChangeType, FileChange} from "./fileWatcher";
 // Then, import and export the FileWatcherEmbeddingService
 import {fileWatcherEmbeddingService} from "./fileWatcherEmbeddingService";
 
+// Import the shadow workspace service
+import {shadowWorkspaceService} from "./shadowWorkspace";
+
 // Export everything for convenience
 export {
   fileWatcherService,
   fileWatcherEmbeddingService,
+  shadowWorkspaceService,
   FileChangeType,
   FileChange,
 };
@@ -22,11 +26,12 @@ export function initializeServices() {
 
   // Any setup code that needs both services can go here
   console.log(
-    "[Services] FileWatcher and FileWatcherEmbeddingService initialized"
+    "[Services] FileWatcher, FileWatcherEmbeddingService, and ShadowWorkspaceService initialized"
   );
 
   return {
     fileWatcherService,
     fileWatcherEmbeddingService,
+    shadowWorkspaceService,
   };
 }

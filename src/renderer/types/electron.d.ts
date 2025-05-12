@@ -24,6 +24,12 @@ interface ElectronAPI {
     shouldWatch: boolean
   ) => Promise<boolean>;
   ragGetWatchedPaths: () => Promise<string[]>;
+  // Shadow workspace methods
+  getShadowWorkspacePath: (originalPath: string) => Promise<string | null>;
+  cleanupShadowWorkspace: (originalPath: string) => Promise<boolean>;
+  copyFileToShadowWorkspace: (
+    originalFilePath: string
+  ) => Promise<string | null>;
   ipcRenderer: {
     on: (channel: string, listener: Function) => void;
     once: (channel: string, listener: Function) => void;

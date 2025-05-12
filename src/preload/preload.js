@@ -32,6 +32,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ragToggleWatchPath: (dirPath, shouldWatch) =>
     ipcRenderer.invoke("rag:toggleWatchPath", dirPath, shouldWatch),
   ragGetWatchedPaths: () => ipcRenderer.invoke("rag:getWatchedPaths"),
+  // Shadow workspace features
+  getShadowWorkspacePath: (originalPath) =>
+    ipcRenderer.invoke("shadow:getPath", originalPath),
+  cleanupShadowWorkspace: (originalPath) =>
+    ipcRenderer.invoke("shadow:cleanup", originalPath),
+  copyFileToShadowWorkspace: (originalFilePath) =>
+    ipcRenderer.invoke("shadow:copyFile", originalFilePath),
   // IPC for events
   ipcRenderer: {
     on: (channel, listener) => ipcRenderer.on(channel, listener),
